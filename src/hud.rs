@@ -30,6 +30,376 @@ fn mt(s: &str, size: u16, font: Option<&Font>) -> TextDimensions {
     measure_text(s, font, size, 1.0)
 }
 
+// —— 菜单视觉：色板 ——————————————————————————————————————
+
+const NEON_CYAN: Color = Color::new(0.0, 0.831, 1.0, 1.0); // #00D4FF
+const ICE_CYAN: Color = Color::new(0.490, 0.976, 1.0, 1.0); // #7DF9FF
+const GOLD: Color = Color::new(1.0, 0.819, 0.4, 1.0); // #FFD166
+const MAGENTA: Color = Color::new(0.788, 0.486, 1.0, 1.0); // #C97CFF
+const SOFT_WHITE: Color = Color::new(0.902, 0.945, 1.0, 1.0); // #E6F1FF
+const MUTED: Color = Color::new(0.490, 0.545, 0.659, 1.0); // #7D8BA8
+const PANEL_FILL: Color = Color::new(0.031, 0.055, 0.110, 0.86); // 半透深蓝
+const PANEL_EDGE: Color = Color::new(0.0, 0.831, 1.0, 0.55);
+
+// —— 通用绘制原语 ——————————————————————————————————————
+
+fn alpha(mut c: Color, a: f32) -> Color {
+    c.a = a;
+    c
+}
+
+/// 画一组 L 形 sci-fi 角标。`len` 是 L 边长，`thick` 厚度。
+fn draw_corner_brackets(x: f32, y: f32, w: f32, h: f32, len: f32, thick: f32, color: Color) {
+    let bars = [
+        // 左上
+        (x, y, len, thick),
+        (x, y, thick, len),
+        // 右上
+        (x + w - len, y, len, thick),
+        (x + w - thick, y, thick, len),
+        // 左下
+        (x, y + h - thick, len, thick),
+        (x, y + h - len, thick, len),
+        // 右下
+        (x + w - len, y + h - thick, len, thick),
+        (x + w - thick, y + h - len, thick, len),
+    ];
+    for (px, py, pw, ph) in bars {
+        draw_rectangle(px, py, pw, ph, color);
+    }
+}
+
+/// 带角标的"控制台"面板。可选标题嵌在上沿。
+fn draw_console_panel(x: f32, y: f32, w: f32, h: f32, title: Option<&str>, font: Option<&Font>) {
+    draw_rectangle(x, y, w, h, PANEL_FILL);
+    draw_rectangle_lines(x, y, w, h, 1.0, alpha(PANEL_EDGE, 0.35));
+    draw_corner_brackets(x, y, w, h, 14.0, 2.0, PANEL_EDGE);
+    if let Some(title) = title {
+        let pad = 10.0;
+        let dim = mt(title, 11, font);
+        let label_w = dim.width + 12.0;
+        // 标题底色一小条，盖住上边线营造嵌入感
+        draw_rectangle(
+            x + pad,
+            y - 6.0,
+            label_w,
+            12.0,
+            Color::new(0.012, 0.020, 0.055, 1.0),
+        );
+        dt(title, x + pad + 6.0, y + 4.0, 11.0, ICE_CYAN, font);
+    }
+}
+
+/// 带左右滑动着色的"扫描线"装饰。
+fn draw_scan_underline(x: f32, y: f32, w: f32, t: f32, color: Color) {
+    draw_rectangle(x, y, w, 1.0, alpha(color, 0.30));
+    let head = ((t * 0.65).fract()) * w;
+    let glow_w = 80.0_f32.min(w);
+    let start = (head - glow_w * 0.5).clamp(0.0, w - glow_w);
+    draw_rectangle(x + start, y - 1.0, glow_w, 3.0, alpha(color, 0.55));
+}
+
+/// 像素小键帽：`[K] Label`。返回占用宽度。
+fn draw_key_cap(x: f32, y: f32, key: &str, label: &str, font: Option<&Font>, on: bool) -> f32 {
+    let kdim = mt(key, 11, font);
+    let cap_w = kdim.width + 10.0;
+    let cap_h = 16.0;
+    let edge = if on {
+        alpha(NEON_CYAN, 0.85)
+    } else {
+        alpha(MUTED, 0.7)
+    };
+    let fill = if on {
+        Color::new(0.0, 0.18, 0.30, 1.0)
+    } else {
+        Color::new(0.06, 0.08, 0.14, 1.0)
+    };
+    draw_rectangle(x, y - cap_h * 0.7, cap_w, cap_h, fill);
+    draw_rectangle_lines(x, y - cap_h * 0.7, cap_w, cap_h, 1.0, edge);
+    dt(key, x + 5.0, y + 3.0, 11.0, edge, font);
+    let ldim = mt(label, 11, font);
+    dt(label, x + cap_w + 5.0, y + 3.0, 11.0, MUTED, font);
+    cap_w + 10.0 + ldim.width + 12.0
+}
+
+/// 三段式 pip 进度条。
+fn draw_stat_bar(
+    x: f32,
+    y: f32,
+    label: &str,
+    value: f32,
+    color: Color,
+    font: Option<&Font>,
+    lang: Lang,
+) {
+    let pip_w = 16.0;
+    let pip_h = 6.0;
+    let gap = 2.0;
+    let segments = 8;
+    let label_w = 38.0;
+    dt(t(label, lang), x, y + pip_h, 11.0, MUTED, font);
+    let filled = (value * segments as f32).round() as i32;
+    for i in 0..segments {
+        let bx = x + label_w + i as f32 * (pip_w + gap);
+        let on = i < filled;
+        let c = if on {
+            color
+        } else {
+            Color::new(0.06, 0.10, 0.18, 1.0)
+        };
+        draw_rectangle(bx, y, pip_w, pip_h, c);
+        if on {
+            draw_rectangle(bx, y, pip_w, 1.0, alpha(SOFT_WHITE, 0.35));
+        }
+    }
+}
+
+/// 透视网格地板。每帧基于 t 滚动，营造"飞行"视感。
+fn draw_perspective_grid(x: f32, y: f32, w: f32, h: f32, t: f32, color: Color) {
+    let rows = 8;
+    let scroll = (t * 0.6).fract();
+    for i in 0..rows {
+        let f = (i as f32 + scroll) / rows as f32;
+        let curve = f * f; // 加速远近
+        let line_y = y + h - curve * h;
+        let inset = (1.0 - curve) * (w * 0.42);
+        let a = (1.0 - curve).powf(1.4) * 0.7;
+        draw_line(
+            x + inset,
+            line_y,
+            x + w - inset,
+            line_y,
+            1.0,
+            alpha(color, a),
+        );
+    }
+    // 中央竖向消失线
+    let cx = x + w * 0.5;
+    let vp_y = y + h * 0.18; // 消失点
+    let cols = 5;
+    for i in -(cols / 2)..=cols / 2 {
+        let bx = cx + i as f32 * w * 0.18;
+        draw_line(bx, y + h, cx, vp_y, 1.0, alpha(color, 0.18));
+    }
+}
+
+/// 标题：双层位移 + 呼吸缩放，营造霓虹"色散"感。
+fn draw_title(cx: f32, y: f32, t_acc: f32, font: Option<&Font>, lang: Lang) {
+    let title = t("STELLAR WING", lang);
+    let breath = 1.0 + (t_acc * 1.6).sin() * 0.025;
+    let size = 50.0 * breath;
+    let dim = mt(title, size as u16, font);
+    let lx = cx - dim.width * 0.5;
+
+    // 软外光
+    for k in [10.0, 6.0, 3.0] {
+        let a = match k {
+            x if x > 8.0 => 0.10,
+            x if x > 4.0 => 0.18,
+            _ => 0.30,
+        };
+        dt(title, lx + k, y, size, alpha(NEON_CYAN, a), font);
+        dt(title, lx - k, y, size, alpha(MAGENTA, a * 0.85), font);
+    }
+    // 主体白蓝
+    dt(title, lx, y, size, ICE_CYAN, font);
+
+    // 副标题
+    let sub = t("Rust Edition  ·  Roguelike Mode", lang);
+    let sd = mt(sub, 13, font);
+    dt(sub, cx - sd.width * 0.5, y + 24.0, 13.0, MUTED, font);
+
+    // 装饰扫描线
+    draw_scan_underline(cx - 130.0, y + 38.0, 260.0, t_acc, NEON_CYAN);
+}
+
+/// 顶部 HIGH SCORE 横幅。
+fn draw_high_score_chip(cx: f32, y: f32, high: u32, font: Option<&Font>, lang: Lang) {
+    let label = t("HIGH SCORE", lang);
+    let value = format!("{:>06}", high);
+    let dl = mt(label, 11, font);
+    let dv = mt(&value, 22, font);
+    let total = dl.width + 12.0 + dv.width;
+    let x = cx - total * 0.5;
+    dt(label, x, y - 4.0, 11.0, MUTED, font);
+    dt(&value, x + dl.width + 12.0, y + 4.0, 22.0, GOLD, font);
+}
+
+/// TOP 5 排行榜面板。
+fn draw_leaderboard(x: f32, y: f32, w: f32, save: &Save, font: Option<&Font>, lang: Lang) {
+    let h = 14.0 + save.leaderboard.len() as f32 * 16.0;
+    draw_console_panel(x, y, w, h + 8.0, Some(t("TOP 5", lang)), font);
+    for (i, r) in save.leaderboard.iter().enumerate() {
+        let row_y = y + 18.0 + i as f32 * 16.0;
+        let rank_color = match i {
+            0 => GOLD,
+            1 => ICE_CYAN,
+            2 => MAGENTA,
+            _ => MUTED,
+        };
+        dt(&format!("{}", i + 1), x + 12.0, row_y, 12.0, rank_color, font);
+        let score = format!("{:>6}", r.score);
+        dt(&score, x + 30.0, row_y, 12.0, SOFT_WHITE, font);
+        let lv = format!("{}{:<2}", t("LV", lang), r.level);
+        dt(&lv, x + 92.0, row_y, 11.0, ICE_CYAN, font);
+        dt(&r.date, x + w - 80.0, row_y, 11.0, MUTED, font);
+    }
+}
+
+/// 中央"机库"面板：透视网格 + 飞船预览 + 名称/描述 + 切换箭头。
+#[allow(clippy::too_many_arguments)]
+fn draw_hangar(
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    ship: ShipType,
+    t_acc: f32,
+    font: Option<&Font>,
+    lang: Lang,
+) {
+    draw_console_panel(x, y, w, h, Some(t("HANGAR", lang)), font);
+
+    // 网格地板（仅画面下半）
+    draw_perspective_grid(
+        x + 6.0,
+        y + h * 0.45,
+        w - 12.0,
+        h * 0.50,
+        t_acc,
+        alpha(NEON_CYAN, 0.6),
+    );
+
+    // 飞船下方光束
+    let cx = x + w * 0.5;
+    let beam_y = y + h * 0.55;
+    let beam_pulse = 0.55 + (t_acc * 3.0).sin() * 0.08;
+    for r in [70.0, 50.0, 30.0] {
+        let a = (1.0 - r / 80.0) * beam_pulse * 0.35;
+        draw_circle(cx, beam_y, r, alpha(ICE_CYAN, a));
+    }
+
+    // 飞船
+    let bob = (t_acc * 1.8).sin() * 4.0;
+    draw_player_preview(ship, cx, beam_y - 14.0 + bob, 1.35, t_acc);
+
+    // 名称
+    let name = t(ship.name(), lang);
+    let dn = mt(name, 22, font);
+    let name_y = y + h * 0.78;
+    // 左右切换箭头（呼吸闪烁）
+    let chev_a = 0.45 + (t_acc * 4.5).sin() * 0.3;
+    let chev = "<";
+    let chev_r = ">";
+    dt(
+        chev,
+        cx - dn.width * 0.5 - 22.0 + (t_acc * 4.5).sin() * 1.5,
+        name_y,
+        20.0,
+        alpha(NEON_CYAN, chev_a),
+        font,
+    );
+    dt(
+        chev_r,
+        cx + dn.width * 0.5 + 8.0 - (t_acc * 4.5).sin() * 1.5,
+        name_y,
+        20.0,
+        alpha(NEON_CYAN, chev_a),
+        font,
+    );
+    dt(name, cx - dn.width * 0.5, name_y, 22.0, GOLD, font);
+
+    // 描述
+    let desc = t(ship.desc(), lang);
+    let dd = mt(desc, 12, font);
+    dt(
+        desc,
+        cx - dd.width * 0.5,
+        y + h - 16.0,
+        12.0,
+        SOFT_WHITE,
+        font,
+    );
+}
+
+/// 飞船属性条（DMG / SPD / TECH）。
+fn draw_ship_stats(cx: f32, y: f32, ship: ShipType, font: Option<&Font>, lang: Lang) {
+    let stats = ship.stats_preview();
+    let row_h = 14.0;
+    let bar_w = 160.0;
+    let total_w = bar_w + 38.0;
+    let x = cx - total_w * 0.5;
+    let palette = [GOLD, ICE_CYAN, MAGENTA];
+    for (i, (label, value)) in stats.iter().enumerate() {
+        draw_stat_bar(
+            x,
+            y + i as f32 * row_h,
+            label,
+            *value,
+            palette[i % palette.len()],
+            font,
+            lang,
+        );
+    }
+}
+
+/// "PRESS ENTER TO LAUNCH" 大字脉冲。
+fn draw_launch_prompt(cx: f32, y: f32, t_acc: f32, font: Option<&Font>, lang: Lang) {
+    let pulse = 0.6 + (t_acc * 4.0).sin() * 0.4;
+    let size = 22.0;
+    let prompt = t("PRESS ENTER TO LAUNCH", lang);
+    let dim = mt(prompt, size as u16, font);
+    let arrow_off = (t_acc * 4.0).sin() * 4.0;
+    let total_w = dim.width + 60.0;
+    let lx = cx - total_w * 0.5 + 30.0;
+
+    dt(
+        "▶",
+        lx - 24.0 + arrow_off,
+        y,
+        size,
+        alpha(NEON_CYAN, pulse),
+        font,
+    );
+    dt(
+        "◀",
+        lx + dim.width + 8.0 - arrow_off,
+        y,
+        size,
+        alpha(NEON_CYAN, pulse),
+        font,
+    );
+    dt(prompt, lx, y, size, alpha(ICE_CYAN, 0.85 + pulse * 0.15), font);
+}
+
+/// 底部一行键提示。
+fn draw_key_row(cx: f32, y: f32, audio: &Audio, font: Option<&Font>, lang: Lang) {
+    let mute_label = if audio.muted {
+        t("Sound Off", lang)
+    } else {
+        t("Sound", lang)
+    };
+    let hints: [(&str, &str, bool); 5] = [
+        ("WASD", t("Move", lang), true),
+        ("←→", t("Pick Ship", lang), true),
+        ("L", t("Lang", lang), true),
+        ("M", mute_label, !audio.muted),
+        ("F", t("Full", lang), true),
+    ];
+    // 估算总宽以居中
+    let mut total = 0.0;
+    for (k, l, _) in hints {
+        let kw = mt(k, 11, font).width + 10.0;
+        let lw = mt(l, 11, font).width;
+        total += kw + 10.0 + lw + 12.0;
+    }
+    total -= 12.0;
+    let mut x = cx - total * 0.5;
+    for (k, l, on) in hints {
+        x += draw_key_cap(x, y, k, l, font, on);
+    }
+}
+
 pub fn draw_menu(
     t_acc: f32,
     save: &Save,
@@ -39,139 +409,45 @@ pub fn draw_menu(
     lang: Lang,
 ) {
     let cx = CFG.w * 0.5;
-    let scale = 1.0 + (t_acc * 1.6).sin() * 0.03;
 
-    let title = t("STELLAR WING", lang);
-    let font_size = 56.0 * scale;
-    let dim = mt(title, font_size as u16, font);
-    dt(
-        title,
-        cx - dim.width * 0.5,
-        160.0,
-        font_size,
-        Color::from_rgba(0, 212, 255, 255),
-        font,
-    );
+    // 背景晕染：菜单页中心一圈低饱和辉光，让面板更浮在前景
+    draw_circle(cx, 360.0, 360.0, alpha(NEON_CYAN, 0.025));
+    draw_circle(cx, 360.0, 240.0, alpha(MAGENTA, 0.020));
 
-    let sub = t("Rust Edition  ·  Roguelike Mode", lang);
-    let dim2 = mt(sub, 16, font);
-    dt(
-        sub,
-        cx - dim2.width * 0.5,
-        192.0,
-        16.0,
-        Color::from_rgba(125, 249, 255, 255),
-        font,
-    );
-
-    let hi = format!("{}  {}", t("HIGH SCORE", lang), save.high);
-    let dh = mt(&hi, 18, font);
-    dt(
-        &hi,
-        cx - dh.width * 0.5,
-        228.0,
-        18.0,
-        Color::from_rgba(255, 209, 102, 255),
-        font,
-    );
+    draw_title(cx, 86.0, t_acc, font, lang);
+    draw_high_score_chip(cx, 142.0, save.high, font, lang);
 
     if !save.leaderboard.is_empty() {
-        let head = t("— TOP 5 —", lang);
-        let dh2 = mt(head, 14, font);
-        dt(
-            head,
-            cx - dh2.width * 0.5,
-            260.0,
-            14.0,
-            Color::from_rgba(180, 200, 220, 255),
-            font,
-        );
-        for (i, r) in save.leaderboard.iter().enumerate() {
-            let line = format!(
-                "{}.  {:>6}   {}{:<2}   {}",
-                i + 1,
-                r.score,
-                t("LV", lang),
-                r.level,
-                r.date
-            );
-            let d = mt(&line, 14, font);
-            dt(
-                &line,
-                cx - d.width * 0.5,
-                284.0 + i as f32 * 20.0,
-                14.0,
-                Color::from_rgba(200, 220, 240, 255),
-                font,
-            );
-        }
+        draw_leaderboard(20.0, 168.0, CFG.w - 40.0, save, font, lang);
     }
 
-    let lines = [
-        t("WASD / Arrows — Move    P / ESC — Pause", lang),
-        t("A / D or ← / → — Select ship", lang),
-        t("M — Mute    F — Fullscreen", lang),
-        t("Auto-fire · Collect XP gems → pick a card", lang),
-    ];
-    let mut y = 460.0;
-    for l in lines {
-        let d = mt(l, 14, font);
-        dt(
-            l,
-            cx - d.width * 0.5,
-            y,
-            14.0,
-            Color::from_rgba(160, 180, 210, 255),
-            font,
-        );
-        y += 22.0;
-    }
-
-    let lang_line = format!("{} {}", t("Language:", lang), lang.name());
-    let dl = mt(&lang_line, 12, font);
-    dt(
-        &lang_line,
-        cx - dl.width * 0.5,
-        y + 6.0,
-        12.0,
-        Color::from_rgba(125, 139, 168, 255),
-        font,
-    );
-
-    let ship_name = t(ship.name(), lang);
-    let dsn = mt(ship_name, 20, font);
-    dt(
-        ship_name,
-        cx - dsn.width * 0.5,
-        568.0,
+    // 排行榜会撑高度，机库相应下移；排行榜空时机库上抬。
+    let lb_bottom = if save.leaderboard.is_empty() {
+        168.0
+    } else {
+        180.0 + save.leaderboard.len() as f32 * 16.0
+    };
+    let hangar_y = lb_bottom + 16.0;
+    let hangar_h = 290.0;
+    draw_hangar(
         20.0,
-        Color::from_rgba(255, 209, 102, 255),
+        hangar_y,
+        CFG.w - 40.0,
+        hangar_h,
+        ship,
+        t_acc,
         font,
-    );
-    let ship_desc = t(ship.desc(), lang);
-    let dsd = mt(ship_desc, 13, font);
-    dt(
-        ship_desc,
-        cx - dsd.width * 0.5,
-        592.0,
-        13.0,
-        Color::from_rgba(180, 200, 220, 255),
-        font,
+        lang,
     );
 
-    draw_player_preview(ship, cx, 666.0, 1.15, t_acc);
+    draw_ship_stats(cx, hangar_y + hangar_h + 18.0, ship, font, lang);
 
-    let mute_status = if audio.muted { t("[Muted]", lang) } else { "" };
-    let hint = format!("{}  {}", t("Press ENTER to start", lang), mute_status);
-    let dh3 = mt(&hint, 20, font);
-    dt(
-        &hint,
-        cx - dh3.width * 0.5,
-        CFG.h - 60.0 + (t_acc * 4.0).sin() * 2.0,
-        20.0,
-        Color::from_rgba(125, 249, 255, 255),
-        font,
-    );
+    draw_launch_prompt(cx, CFG.h - 96.0, t_acc, font, lang);
+    draw_key_row(cx, CFG.h - 38.0, audio, font, lang);
+
+    // 语言指示靠左下角，不抢戏
+    let lang_line = format!("◆ {}", lang.name());
+    dt(&lang_line, 16.0, CFG.h - 16.0, 11.0, MUTED, font);
 }
 
 pub fn draw_play_hud(world: &World, high: u32, font: Option<&Font>, lang: Lang) {

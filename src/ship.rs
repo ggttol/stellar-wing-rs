@@ -27,6 +27,15 @@ impl ShipType {
         }
     }
 
+    /// 给菜单 UI 用的属性条预览（值在 0..1 内）。
+    pub fn stats_preview(self) -> [(&'static str, f32); 3] {
+        match self {
+            ShipType::Vanguard => [("DMG", 0.85), ("SPD", 0.50), ("TECH", 0.40)],
+            ShipType::Striker => [("DMG", 0.55), ("SPD", 0.90), ("TECH", 0.40)],
+            ShipType::Engineer => [("DMG", 0.45), ("SPD", 0.60), ("TECH", 0.90)],
+        }
+    }
+
     pub fn apply(self, player: &mut Player, weapons: &mut WeaponSlot) {
         match self {
             ShipType::Vanguard => {
