@@ -306,5 +306,50 @@ pub fn draw_enemy_ship(kind: EnemyKind, x: f32, y: f32, w: f32, h: f32, base: Co
             draw_circle(x, y - h * 0.18, w * 0.07, with_alpha(hi, 0.25));
             draw_circle(x, y - h * 0.18, w * 0.04, hi);
         }
+        EnemyKind::Kamikaze => {
+            // 红色菱形 + 双引擎尾焰，营造"突击"感。
+            let pulse = with_alpha(hi, 0.55);
+            draw_circle(x, y, w * 0.7, with_alpha(base, 0.20));
+            draw_triangle(
+                vec2(x, y - h * 0.55),
+                vec2(x + w * 0.50, y),
+                vec2(x, y + h * 0.30),
+                base,
+            );
+            draw_triangle(
+                vec2(x, y - h * 0.55),
+                vec2(x - w * 0.50, y),
+                vec2(x, y + h * 0.30),
+                mid,
+            );
+            draw_triangle(
+                vec2(x - w * 0.18, y + h * 0.10),
+                vec2(x + w * 0.18, y + h * 0.10),
+                vec2(x, y + h * 0.55),
+                pulse,
+            );
+            draw_circle(x, y - h * 0.05, w * 0.10, dark);
+            draw_circle(x, y - h * 0.05, w * 0.06, cockpit);
+        }
+        EnemyKind::Strafer => {
+            // 长条扁机身 + 翼端发射点。
+            draw_rectangle(x - w * 0.45, y - h * 0.20, w * 0.90, h * 0.40, base);
+            draw_triangle(
+                vec2(x - w * 0.45, y - h * 0.20),
+                vec2(x - w * 0.65, y),
+                vec2(x - w * 0.45, y + h * 0.20),
+                mid,
+            );
+            draw_triangle(
+                vec2(x + w * 0.45, y - h * 0.20),
+                vec2(x + w * 0.65, y),
+                vec2(x + w * 0.45, y + h * 0.20),
+                mid,
+            );
+            draw_rectangle(x - w * 0.10, y - h * 0.40, w * 0.20, h * 0.40, dark);
+            draw_circle(x, y - h * 0.20, w * 0.06, cockpit);
+            draw_circle(x - w * 0.55, y + h * 0.10, w * 0.05, with_alpha(hi, 0.7));
+            draw_circle(x + w * 0.55, y + h * 0.10, w * 0.05, with_alpha(hi, 0.7));
+        }
     }
 }

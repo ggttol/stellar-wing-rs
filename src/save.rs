@@ -8,6 +8,15 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::lang::Lang;
+use crate::ship::ShipType;
+
+/// 飞船解锁位掩码：bit0 = Vanguard（永久），bit1 = Striker，bit2 = Engineer。
+const SHIP_BIT_VANGUARD: u32 = 1 << 0;
+const SHIP_BIT_STRIKER: u32 = 1 << 1;
+const SHIP_BIT_ENGINEER: u32 = 1 << 2;
+
+const STRIKER_UNLOCK_LIFETIME: u64 = 5_000;
+const ENGINEER_UNLOCK_LIFETIME: u64 = 15_000;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Save {
@@ -19,6 +28,26 @@ pub struct Save {
     pub fullscreen: bool,
     #[serde(default)]
     pub lang: Lang,
+
+    // —— 元进度（跨局） ————————————————————————————
+    #[serde(default)]
+    pub stardust: u64,
+    #[serde(default)]
+    pub lifetime_score: u64,
+    #[serde(default)]
+    pub bosses_killed: u32,
+    #[serde(default)]
+    pub runs: u32,
+    /// 解锁飞船位掩码；Vanguard 总是有效。
+    #[serde(default = "default_ship_mask")]
+    pub unlocked_ships: u32,
+    /// 历史最远到达的章节 (0..5) +1（人类可读）；endless 不计入。
+    #[serde(default)]
+    pub furthest_chapter: u32,
+}
+
+fn default_ship_mask() -> u32 {
+    SHIP_BIT_VANGUARD
 }
 
 impl Default for Save {
@@ -29,8 +58,24 @@ impl Default for Save {
             muted: true,
             fullscreen: false,
             lang: Lang::default(),
+            stardust: 0,
+            lifetime_score: 0,
+            bosses_killed: 0,
+            runs: 0,
+            unlocked_ships: default_ship_mask(),
+            furthest_chapter: 0,
         }
     }
+}
+
+/// 一局结算的奖励，给 UI 直接显示用。
+pub struct RunReward {
+    pub stardust_gained: u64,
+    #[allow(dead_code)] // 保留给未来"+X / total"过渡动画
+    pub lifetime_before: u64,
+    pub lifetime_after: u64,
+    /// 本局新解锁的飞船（在 game over 上做 toast）。
+    pub newly_unlocked: Vec<ShipType>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -73,6 +118,65 @@ impl Save {
         self.leaderboard.truncate(5);
         if score > self.high {
             self.high = score;
+        }
+    }
+
+    pub fn ship_unlocked(&self, ship: ShipType) -> bool {
+        match ship {
+            ShipType::Vanguard => true,
+            ShipType::Striker => self.unlocked_ships & SHIP_BIT_STRIKER != 0,
+            ShipType::Engineer => self.unlocked_ships & SHIP_BIT_ENGINEER != 0,
+        }
+    }
+
+    pub fn ship_unlock_cost(ship: ShipType) -> Option<u64> {
+        match ship {
+            ShipType::Vanguard => None,
+            ShipType::Striker => Some(STRIKER_UNLOCK_LIFETIME),
+            ShipType::Engineer => Some(ENGINEER_UNLOCK_LIFETIME),
+        }
+    }
+
+    /// 一局结束的奖励登记。返回前端要展示的奖励包。
+    pub fn record_run(
+        &mut self,
+        score: u32,
+        level: u32,
+        bosses_in_run: u32,
+        chapter_reached: u32,
+    ) -> RunReward {
+        // Stardust：分数主，Boss 加成。
+        let stardust = (score as u64) / 100 + (bosses_in_run as u64) * 50;
+        let lifetime_before = self.lifetime_score;
+        self.stardust = self.stardust.saturating_add(stardust);
+        self.lifetime_score = self.lifetime_score.saturating_add(score as u64);
+        self.bosses_killed = self.bosses_killed.saturating_add(bosses_in_run);
+        self.runs = self.runs.saturating_add(1);
+        if chapter_reached > self.furthest_chapter && chapter_reached < 99 {
+            self.furthest_chapter = chapter_reached;
+        }
+        self.push_record(score, level);
+
+        // 解锁判定。
+        let mut newly_unlocked = Vec::new();
+        if self.unlocked_ships & SHIP_BIT_STRIKER == 0
+            && self.lifetime_score >= STRIKER_UNLOCK_LIFETIME
+        {
+            self.unlocked_ships |= SHIP_BIT_STRIKER;
+            newly_unlocked.push(ShipType::Striker);
+        }
+        if self.unlocked_ships & SHIP_BIT_ENGINEER == 0
+            && self.lifetime_score >= ENGINEER_UNLOCK_LIFETIME
+        {
+            self.unlocked_ships |= SHIP_BIT_ENGINEER;
+            newly_unlocked.push(ShipType::Engineer);
+        }
+
+        RunReward {
+            stardust_gained: stardust,
+            lifetime_before,
+            lifetime_after: self.lifetime_score,
+            newly_unlocked,
         }
     }
 }

@@ -3,6 +3,7 @@ use macroquad::prelude::*;
 mod art;
 mod audio;
 mod bg;
+mod chapter;
 mod collision;
 mod combat;
 mod config;
@@ -21,7 +22,7 @@ mod world;
 use audio::{Audio, BgmTrack};
 use config::CFG;
 use lang::Lang;
-use save::Save;
+use save::{RunReward, Save};
 use scene::Scene;
 use ship::ShipType;
 use world::World;
@@ -59,6 +60,7 @@ async fn main() {
     let mut menu_ship = 0usize;
     let mut world = World::new(ShipType::ALL[menu_ship]);
     let mut card_cursor: usize = 0;
+    let mut last_reward: Option<RunReward> = None;
 
     audio_inst.set_track(BgmTrack::Menu);
 
@@ -75,17 +77,22 @@ async fn main() {
         match &mut scene {
             Scene::Menu => {
                 if is_key_pressed(KeyCode::Left) || is_key_pressed(KeyCode::A) {
-                    menu_ship = (menu_ship + ShipType::ALL.len() - 1) % ShipType::ALL.len();
+                    menu_ship = step_unlocked_ship(menu_ship, -1, &save_data);
                 }
                 if is_key_pressed(KeyCode::Right) || is_key_pressed(KeyCode::D) {
-                    menu_ship = (menu_ship + 1) % ShipType::ALL.len();
+                    menu_ship = step_unlocked_ship(menu_ship, 1, &save_data);
                 }
                 if is_key_pressed(KeyCode::Enter) || is_key_pressed(KeyCode::Space) {
-                    world = World::new(ShipType::ALL[menu_ship]);
-                    fx = fx::Fx::default();
-                    audio_inst.play_click();
-                    audio_inst.set_track(BgmTrack::Play);
-                    scene = Scene::Playing;
+                    let ship = ShipType::ALL[menu_ship];
+                    if save_data.ship_unlocked(ship) {
+                        world = World::new(ship);
+                        fx = fx::Fx::default();
+                        audio_inst.play_click();
+                        audio_inst.set_track(BgmTrack::Play);
+                        scene = Scene::Playing;
+                    } else {
+                        audio_inst.play_pause(); // 锁定提示音
+                    }
                 }
                 if is_key_pressed(KeyCode::Escape) {
                     break;
@@ -105,8 +112,14 @@ async fn main() {
                             2.5,
                             Color::from_rgba(125, 249, 255, 255),
                         );
-                        save_data.push_record(world.score, world.level);
+                        let reward = save_data.record_run(
+                            world.score,
+                            world.level,
+                            world.bosses_killed_run,
+                            world.chapter_idx,
+                        );
                         save::write(&save_data);
+                        last_reward = Some(reward);
                         audio_inst.play_gameover();
                         audio_inst.set_track(BgmTrack::None);
                         scene = Scene::GameOver;
@@ -204,7 +217,13 @@ async fn main() {
         }
 
         clear_background(Color::from_rgba(2, 3, 10, 255));
-        bg.draw();
+        match &scene {
+            Scene::Playing | Scene::Paused | Scene::UpgradePick(_) | Scene::GameOver => {
+                let chap = chapter::get(world.chapter_idx);
+                bg.draw_themed(chap.bg_top, chap.bg_mid, chap.star_tint);
+            }
+            _ => bg.draw(),
+        }
 
         match &scene {
             Scene::Menu => hud::draw_menu(
@@ -219,6 +238,7 @@ async fn main() {
                 hud::draw_world(&world, t_acc);
                 fx.draw();
                 hud::draw_play_hud(&world, save_data.high, font, lang);
+                hud::draw_chapter_intro(&world, font, lang);
             }
             Scene::Paused => {
                 hud::draw_world(&world, t_acc);
@@ -236,13 +256,33 @@ async fn main() {
                 hud::draw_world(&world, t_acc);
                 fx.draw();
                 hud::draw_play_hud(&world, save_data.high, font, lang);
-                hud::draw_gameover(t_acc, &world, &save_data, font, lang);
+                hud::draw_gameover(
+                    t_acc,
+                    &world,
+                    &save_data,
+                    last_reward.as_ref(),
+                    font,
+                    lang,
+                );
             }
             _ => {}
         }
 
         next_frame().await;
     }
+}
+
+/// 在解锁的飞船里走一步；锁住的也允许停留（让玩家看到提示），但优先走到下一个解锁的。
+fn step_unlocked_ship(cur: usize, dir: i32, save: &Save) -> usize {
+    let n = ShipType::ALL.len();
+    let mut next = cur;
+    for _ in 0..n {
+        next = ((next as i32 + dir).rem_euclid(n as i32)) as usize;
+        if save.ship_unlocked(ShipType::ALL[next]) {
+            return next;
+        }
+    }
+    cur
 }
 
 fn global_keys(save_data: &mut Save, audio_inst: &mut Audio, cjk_font: &Option<Font>) {
@@ -321,12 +361,24 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
         audio.play_shoot();
     }
 
-    // 生成
+    // 章节内时钟（仅在没有 Boss 时推进）
     if !world.boss_alive {
-        spawn::spawn_normals(world, dt, t);
-        if world.run_time >= world.next_boss_at {
-            let x = CFG.w * 0.5;
-            world.enemies.push(spawn::spawn_boss(x, t));
+        if world.chapter_intro > 0.0 {
+            world.chapter_intro -= dt;
+        } else {
+            world.chapter_time += dt;
+        }
+    }
+
+    // 普通敌人 / 章节专属敌人
+    if !world.boss_alive {
+        spawn::spawn_chapter_wave(world, dt, t);
+
+        // Boss 入场
+        let chap = chapter::get(world.chapter_idx);
+        if !world.chapter_boss_spawned && world.chapter_time >= chap.duration {
+            spawn::spawn_chapter_boss(world, t);
+            world.chapter_boss_spawned = true;
             world.boss_alive = true;
             audio.play_boss_intro();
         }
@@ -360,8 +412,19 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
 
     let boss_died = combat::process_kills(world, fx, audio, t);
     if boss_died {
-        world.boss_alive = false;
-        world.next_boss_at = world.run_time + 90.0;
+        // 仅当所有 boss 都被击杀（无尽双 boss）才推进章节。
+        let still_alive = world.enemies.iter().any(|e| {
+            !e.dead && matches!(e.kind, entity::EnemyKind::Boss)
+        });
+        if !still_alive {
+            world.boss_alive = false;
+            world.bosses_killed_run += 1;
+            world.chapter_idx += 1;
+            world.chapter_time = 0.0;
+            world.chapter_boss_spawned = false;
+            world.chapter_intro = 2.5;
+            world.strafer_timer = 0.0;
+        }
     }
 
     combat::resolve_enemy_bullets(world, audio, t);

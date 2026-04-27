@@ -17,6 +17,10 @@ pub enum BossMod {
     Bulwark,
     Summoner,
     StormCore,
+    /// 周期性瞬移；瞬移期间无敌（短暂淡出）。
+    Phantom,
+    /// 50% HP 时分裂出两架精英 Large 护卫；自身保留剩余血。
+    Hydra,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,6 +38,10 @@ pub enum EnemyKind {
     Medium,
     Large,
     Boss,
+    /// 自爆冲撞：锁定玩家初始位置高速直线冲击。
+    Kamikaze,
+    /// 横向扫射：从屏幕一侧滑过，沿途持续射击。
+    Strafer,
 }
 
 impl EnemyKind {
@@ -71,6 +79,28 @@ impl EnemyKind {
                 speed: 45.0,
                 fire_rate: 1.1,
                 color: Color::from_rgba(255, 77, 109, 255),
+            },
+            EnemyKind::Kamikaze => EnemyStats {
+                w: 26.0,
+                h: 30.0,
+                radius: 13.0,
+                hp: 1.5,
+                score: 25,
+                xp: 2,
+                speed: 260.0,
+                fire_rate: 0.0,
+                color: Color::from_rgba(255, 90, 110, 255),
+            },
+            EnemyKind::Strafer => EnemyStats {
+                w: 38.0,
+                h: 30.0,
+                radius: 16.0,
+                hp: 2.0,
+                score: 45,
+                xp: 3,
+                speed: 220.0,
+                fire_rate: 0.55,
+                color: Color::from_rgba(125, 220, 255, 255),
             },
             EnemyKind::Boss => EnemyStats {
                 w: 180.0,
@@ -129,6 +159,12 @@ pub struct Enemy {
     pub boss_mod: Option<BossMod>,
     pub boss_phase: u8,
     pub pending_boss_attack: TelegraphKind,
+    /// Phantom：剩余瞬移无敌时间（>0 时不可被击伤）
+    pub phantom_invuln: f32,
+    /// Phantom：距离下次瞬移的倒计时
+    pub phantom_blink_in: f32,
+    /// Hydra：50% HP 触发的"分裂"是否已经放过
+    pub hydra_split: bool,
     pub last_hit: HitSource,
     pub dead: bool,
 }
@@ -171,6 +207,9 @@ impl Enemy {
             boss_mod: None,
             boss_phase: 0,
             pending_boss_attack: TelegraphKind::None,
+            phantom_invuln: 0.0,
+            phantom_blink_in: 6.0,
+            hydra_split: false,
             last_hit: HitSource::Enemy,
             dead: false,
         }
@@ -214,6 +253,14 @@ impl Enemy {
                 self.fire_rate *= 0.95;
                 self.color = Color::from_rgba(125, 249, 255, 255);
             }
+            BossMod::Phantom => {
+                self.fire_rate *= 0.92;
+                self.color = Color::from_rgba(180, 140, 255, 255);
+            }
+            BossMod::Hydra => {
+                self.fire_rate *= 0.88;
+                self.color = Color::from_rgba(120, 230, 170, 255);
+            }
         }
         self
     }
@@ -234,6 +281,35 @@ impl Enemy {
 
         match self.kind {
             EnemyKind::Boss => self.update_boss(dt, t, player_x, bullets),
+            EnemyKind::Kamikaze => {
+                // 自爆冲撞：直线冲刺，越界即销毁。vx/vy 由 spawn 阶段锁定。
+                self.x += self.vx * dt;
+                self.y += self.vy * dt;
+                if self.y > CFG.h + 60.0
+                    || self.y < -60.0
+                    || self.x < -60.0
+                    || self.x > CFG.w + 60.0
+                {
+                    self.dead = true;
+                }
+            }
+            EnemyKind::Strafer => {
+                // 横扫：vx 方向移动，越界即销毁。沿途朝下射击。
+                self.x += self.vx * dt;
+                self.y += self.vy * dt; // 通常 vy=0，留个口子做斜扫
+                if self.x < -60.0 || self.x > CFG.w + 60.0 {
+                    self.dead = true;
+                }
+                if self.fire_rate > 0.0 && t - self.last_shot >= self.fire_rate {
+                    self.last_shot = t;
+                    bullets.push(Bullet::enemy_shot(
+                        self.x,
+                        self.y + self.h * 0.4,
+                        0.0,
+                        300.0,
+                    ));
+                }
+            }
             _ => {
                 let mut speed_mul = 1.0;
                 if self.is_elite && matches!(self.elite_mod, Some(EliteMod::Berserk)) {
@@ -277,6 +353,10 @@ impl Enemy {
     }
 
     pub fn damage_mul(&self) -> f32 {
+        // Phantom：瞬移期间完全无敌（淡出状态）
+        if matches!(self.boss_mod, Some(BossMod::Phantom)) && self.phantom_invuln > 0.0 {
+            return 0.0;
+        }
         if matches!(self.kind, EnemyKind::Boss)
             && matches!(self.boss_mod, Some(BossMod::Bulwark))
             && self.hp / self.max_hp > 0.75
@@ -334,6 +414,21 @@ impl Enemy {
         let target_y = 140.0;
         if self.y < target_y {
             self.y = (self.y + self.vy * dt).min(target_y);
+        }
+
+        // Phantom：周期性瞬移 + 短暂无敌淡出
+        if matches!(self.boss_mod, Some(BossMod::Phantom)) {
+            if self.phantom_invuln > 0.0 {
+                self.phantom_invuln -= dt;
+            }
+            self.phantom_blink_in -= dt;
+            if self.phantom_blink_in <= 0.0 {
+                use ::rand::{thread_rng, Rng};
+                let mut rng = thread_rng();
+                self.x = rng.gen_range(80.0..(CFG.w - 80.0));
+                self.phantom_invuln = 0.45;
+                self.phantom_blink_in = 6.5;
+            }
         }
         // 横向正弦巡航
         let life = (t - self.spawn_t).max(0.0);
@@ -395,6 +490,36 @@ impl Enemy {
         if !matches!(self.kind, EnemyKind::Boss) {
             return;
         }
+
+        // Hydra：50% HP 触发一次"分裂"爆发，与三段相位独立
+        if matches!(self.boss_mod, Some(BossMod::Hydra)) && !self.hydra_split && ratio <= 0.5 {
+            self.hydra_split = true;
+            let muzzle_y = self.y + self.h * 0.45;
+            // 12 道圆环
+            let spokes = 14;
+            let speed = 280.0;
+            for i in 0..spokes {
+                let ang = i as f32 * std::f32::consts::TAU / spokes as f32;
+                bullets.push(Bullet::enemy_shot(
+                    self.x,
+                    self.y,
+                    ang.cos() * speed,
+                    ang.sin() * speed,
+                ));
+            }
+            // 4 发左右散弹
+            for i in [-2.0_f32, -1.0, 1.0, 2.0] {
+                bullets.push(Bullet::enemy_shot(
+                    self.x + i * 18.0,
+                    muzzle_y,
+                    i * 60.0,
+                    320.0,
+                ));
+            }
+            self.telegraph = 0.0;
+            self.pending_boss_attack = TelegraphKind::None;
+        }
+
         let phase = if ratio > 0.66 {
             0
         } else if ratio > 0.33 {
@@ -510,18 +635,29 @@ impl Enemy {
             Some(BossMod::Bulwark) => Some("Bulwark"),
             Some(BossMod::Summoner) => Some("Summoner"),
             Some(BossMod::StormCore) => Some("Storm Core"),
+            Some(BossMod::Phantom) => Some("Phantom"),
+            Some(BossMod::Hydra) => Some("Hydra"),
             None => None,
         }
     }
 
     pub fn draw(&self) {
-        let c = if self.hit_flash > 0.0 {
+        let phantom_fade = if matches!(self.boss_mod, Some(BossMod::Phantom))
+            && self.phantom_invuln > 0.0
+        {
+            (self.phantom_invuln / 0.45).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let alpha = 1.0 - phantom_fade * 0.75;
+        let mut c = if self.hit_flash > 0.0 {
             WHITE
         } else {
             self.color
         };
+        c.a = alpha;
         let mut g = c;
-        g.a = if self.is_elite { 0.38 } else { 0.25 };
+        g.a = if self.is_elite { 0.38 } else { 0.25 } * alpha;
         draw_circle(self.x, self.y, self.radius * 1.4, g);
         if self.is_elite {
             let mut ring = c;

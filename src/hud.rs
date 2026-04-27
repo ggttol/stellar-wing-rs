@@ -4,10 +4,11 @@ use macroquad::prelude::*;
 
 use crate::art::draw_player_preview;
 use crate::audio::Audio;
+use crate::chapter;
 use crate::config::CFG;
 use crate::entity::{enemy::TelegraphKind, EnemyKind};
 use crate::lang::{t, Lang};
-use crate::save::Save;
+use crate::save::{RunReward, Save};
 use crate::ship::ShipType;
 use crate::upgrade::Card;
 use crate::world::World;
@@ -40,6 +41,7 @@ const SOFT_WHITE: Color = Color::new(0.902, 0.945, 1.0, 1.0); // #E6F1FF
 const MUTED: Color = Color::new(0.490, 0.545, 0.659, 1.0); // #7D8BA8
 const PANEL_FILL: Color = Color::new(0.031, 0.055, 0.110, 0.86); // 半透深蓝
 const PANEL_EDGE: Color = Color::new(0.0, 0.831, 1.0, 0.55);
+const BANNER_BG: Color = Color::new(0.012, 0.020, 0.055, 1.0);
 
 // —— 通用绘制原语 ——————————————————————————————————————
 
@@ -254,45 +256,73 @@ fn draw_hangar(
     w: f32,
     h: f32,
     ship: ShipType,
+    save: &Save,
     t_acc: f32,
     font: Option<&Font>,
     lang: Lang,
 ) {
+    let unlocked = save.ship_unlocked(ship);
     draw_console_panel(x, y, w, h, Some(t("HANGAR", lang)), font);
 
-    // 网格地板（仅画面下半）
     draw_perspective_grid(
         x + 6.0,
         y + h * 0.45,
         w - 12.0,
         h * 0.50,
         t_acc,
-        alpha(NEON_CYAN, 0.6),
+        alpha(NEON_CYAN, if unlocked { 0.6 } else { 0.25 }),
     );
 
-    // 飞船下方光束
     let cx = x + w * 0.5;
     let beam_y = y + h * 0.55;
-    let beam_pulse = 0.55 + (t_acc * 3.0).sin() * 0.08;
-    for r in [70.0, 50.0, 30.0] {
-        let a = (1.0 - r / 80.0) * beam_pulse * 0.35;
-        draw_circle(cx, beam_y, r, alpha(ICE_CYAN, a));
+    if unlocked {
+        let beam_pulse = 0.55 + (t_acc * 3.0).sin() * 0.08;
+        for r in [70.0, 50.0, 30.0] {
+            let a = (1.0 - r / 80.0) * beam_pulse * 0.35;
+            draw_circle(cx, beam_y, r, alpha(ICE_CYAN, a));
+        }
     }
 
-    // 飞船
     let bob = (t_acc * 1.8).sin() * 4.0;
     draw_player_preview(ship, cx, beam_y - 14.0 + bob, 1.35, t_acc);
 
-    // 名称
+    if !unlocked {
+        // 锁定遮罩
+        draw_rectangle(x, y, w, h, alpha(BANNER_BG, 0.55));
+        let lock = t("LOCKED", lang);
+        let dl = mt(lock, 28, font);
+        dt(
+            lock,
+            cx - dl.width * 0.5,
+            y + h * 0.45,
+            28.0,
+            alpha(MAGENTA, 0.85),
+            font,
+        );
+        if let Some(cost) = Save::ship_unlock_cost(ship) {
+            let progress = (save.lifetime_score as f32 / cost as f32).clamp(0.0, 1.0);
+            let bar_w = w * 0.7;
+            let bar_x = cx - bar_w * 0.5;
+            let bar_y = y + h * 0.55;
+            draw_rectangle(bar_x, bar_y, bar_w, 6.0, Color::new(0.06, 0.10, 0.18, 1.0));
+            draw_rectangle(bar_x, bar_y, bar_w * progress, 6.0, GOLD);
+            let cap = format!(
+                "{}  {} / {}",
+                t("Lifetime score", lang),
+                save.lifetime_score,
+                cost
+            );
+            let dc = mt(&cap, 11, font);
+            dt(&cap, cx - dc.width * 0.5, bar_y + 20.0, 11.0, MUTED, font);
+        }
+    }
+
     let name = t(ship.name(), lang);
     let dn = mt(name, 22, font);
     let name_y = y + h * 0.78;
-    // 左右切换箭头（呼吸闪烁）
     let chev_a = 0.45 + (t_acc * 4.5).sin() * 0.3;
-    let chev = "<";
-    let chev_r = ">";
     dt(
-        chev,
+        "<",
         cx - dn.width * 0.5 - 22.0 + (t_acc * 4.5).sin() * 1.5,
         name_y,
         20.0,
@@ -300,16 +330,22 @@ fn draw_hangar(
         font,
     );
     dt(
-        chev_r,
+        ">",
         cx + dn.width * 0.5 + 8.0 - (t_acc * 4.5).sin() * 1.5,
         name_y,
         20.0,
         alpha(NEON_CYAN, chev_a),
         font,
     );
-    dt(name, cx - dn.width * 0.5, name_y, 22.0, GOLD, font);
+    dt(
+        name,
+        cx - dn.width * 0.5,
+        name_y,
+        22.0,
+        if unlocked { GOLD } else { MUTED },
+        font,
+    );
 
-    // 描述
     let desc = t(ship.desc(), lang);
     let dd = mt(desc, 12, font);
     dt(
@@ -317,7 +353,7 @@ fn draw_hangar(
         cx - dd.width * 0.5,
         y + h - 16.0,
         12.0,
-        SOFT_WHITE,
+        if unlocked { SOFT_WHITE } else { MUTED },
         font,
     );
 }
@@ -416,6 +452,17 @@ pub fn draw_menu(
 
     draw_title(cx, 86.0, t_acc, font, lang);
     draw_high_score_chip(cx, 142.0, save.high, font, lang);
+    // Stardust 余额（菜单角标）
+    let star_text = format!("✦ {}", save.stardust);
+    let ds = mt(&star_text, 12, font);
+    dt(
+        &star_text,
+        cx - ds.width * 0.5,
+        158.0,
+        12.0,
+        ICE_CYAN,
+        font,
+    );
 
     if !save.leaderboard.is_empty() {
         draw_leaderboard(20.0, 168.0, CFG.w - 40.0, save, font, lang);
@@ -435,6 +482,7 @@ pub fn draw_menu(
         CFG.w - 40.0,
         hangar_h,
         ship,
+        save,
         t_acc,
         font,
         lang,
@@ -697,7 +745,14 @@ pub fn draw_pause(font: Option<&Font>, lang: Lang) {
     }
 }
 
-pub fn draw_gameover(t_acc: f32, world: &World, save: &Save, font: Option<&Font>, lang: Lang) {
+pub fn draw_gameover(
+    t_acc: f32,
+    world: &World,
+    save: &Save,
+    reward: Option<&RunReward>,
+    font: Option<&Font>,
+    lang: Lang,
+) {
     draw_rectangle(0.0, 0.0, CFG.w, CFG.h, Color::from_rgba(0, 0, 0, 180));
     let cx = CFG.w * 0.5;
     let bob = (t_acc * 3.0).sin() * 4.0;
@@ -754,6 +809,81 @@ pub fn draw_gameover(t_acc: f32, world: &World, save: &Save, font: Option<&Font>
             Color::from_rgba(125, 249, 255, 255),
             font,
         );
+    }
+
+    // —— 奖励 / 解锁面板 ————————————————————————————
+    if let Some(r) = reward {
+        let panel_y = 380.0;
+        let panel_h = 100.0;
+        draw_console_panel(
+            20.0,
+            panel_y,
+            CFG.w - 40.0,
+            panel_h,
+            Some(t("REWARDS", lang)),
+            font,
+        );
+        let stardust_label = format!("✦ +{}", r.stardust_gained);
+        dt(
+            &stardust_label,
+            36.0,
+            panel_y + 28.0,
+            22.0,
+            GOLD,
+            font,
+        );
+        let stardust_caption = t("Stardust earned", lang);
+        dt(
+            stardust_caption,
+            36.0,
+            panel_y + 46.0,
+            11.0,
+            MUTED,
+            font,
+        );
+
+        let total_label = format!("{}: {}", t("Total", lang), save.stardust);
+        let dt_total = mt(&total_label, 12, font);
+        dt(
+            &total_label,
+            CFG.w - 36.0 - dt_total.width,
+            panel_y + 28.0,
+            12.0,
+            ICE_CYAN,
+            font,
+        );
+        let lifetime = format!(
+            "{}: {}",
+            t("Lifetime", lang),
+            r.lifetime_after
+        );
+        let dt_life = mt(&lifetime, 11, font);
+        dt(
+            &lifetime,
+            CFG.w - 36.0 - dt_life.width,
+            panel_y + 46.0,
+            11.0,
+            MUTED,
+            font,
+        );
+
+        if !r.newly_unlocked.is_empty() {
+            let unlock_pulse = (t_acc * 5.0).sin().abs() * 0.4 + 0.6;
+            let mut yy = panel_y + 70.0;
+            for ship in &r.newly_unlocked {
+                let line = format!("✦ {}: {}", t("UNLOCKED", lang), t(ship.name(), lang));
+                let dl = mt(&line, 13, font);
+                dt(
+                    &line,
+                    cx - dl.width * 0.5,
+                    yy,
+                    13.0,
+                    alpha(GOLD, unlock_pulse),
+                    font,
+                );
+                yy += 16.0;
+            }
+        }
     }
 
     let hint = t("ENTER restart  ·  ESC menu", lang);
@@ -928,6 +1058,70 @@ fn draw_heart(x: f32, y: f32, s: f32, c: Color) {
         vec2(x + s, y + s * 0.1),
         vec2(x, y + s * 1.2),
         c,
+    );
+}
+
+/// 章节切入时的标题/副标题 + "CH N / TOTAL" 章节计数。
+/// `progress` 0..1：1 = 刚出现，0 = 完全淡出。
+pub fn draw_chapter_intro(world: &World, font: Option<&Font>, lang: Lang) {
+    if world.chapter_intro <= 0.0 {
+        return;
+    }
+    let progress = (world.chapter_intro / 2.5).clamp(0.0, 1.0);
+    // 缓入缓出：前 0.3 上抬，后段淡出。
+    let a = if progress > 0.85 {
+        ((1.0 - progress) / 0.15).clamp(0.0, 1.0)
+    } else if progress < 0.30 {
+        (progress / 0.30).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    let chap = chapter::get(world.chapter_idx);
+    let cx = CFG.w * 0.5;
+    let y = CFG.h * 0.36;
+
+    // 半透横幅
+    draw_rectangle(0.0, y - 38.0, CFG.w, 80.0, alpha(BANNER_BG, a * 0.65));
+    draw_rectangle(0.0, y - 38.0, CFG.w, 1.5, alpha(NEON_CYAN, a));
+    draw_rectangle(0.0, y + 40.0, CFG.w, 1.5, alpha(NEON_CYAN, a));
+
+    // CH n / total（无尽则直接 ENDLESS）
+    let label = if chap.endless {
+        format!("◆ {} ◆", t("ENDLESS", lang))
+    } else {
+        format!(
+            "{} {} / {}",
+            t("CHAPTER", lang),
+            chap.id,
+            chapter::total()
+        )
+    };
+    let dl = mt(&label, 12, font);
+    dt(&label, cx - dl.width * 0.5, y - 18.0, 12.0, alpha(GOLD, a), font);
+
+    // 章节名
+    let name = if lang == Lang::Zh {
+        chap.name_zh
+    } else {
+        chap.name_en
+    };
+    let dn = mt(name, 26, font);
+    dt(name, cx - dn.width * 0.5, y + 10.0, 26.0, alpha(ICE_CYAN, a), font);
+
+    // 副标题
+    let tag = if lang == Lang::Zh {
+        chap.tagline_zh
+    } else {
+        chap.tagline_en
+    };
+    let dt2 = mt(tag, 12, font);
+    dt(
+        tag,
+        cx - dt2.width * 0.5,
+        y + 32.0,
+        12.0,
+        alpha(SOFT_WHITE, a * 0.85),
+        font,
     );
 }
 

@@ -32,7 +32,21 @@ pub struct World {
     pub xp: u32,
     pub level: u32,
     pub xp_to_next: u32,
-    pub next_boss_at: f32,
+
+    // —— 章节 / Boss 节奏 ——
+    /// 当前章节索引；0..=4 = 故事章节，5+ = 无尽（取 endless 模板）。
+    pub chapter_idx: u32,
+    /// 章节内累计时间，到 chapter.duration 触发 Boss。
+    pub chapter_time: f32,
+    /// 当前章节是否已经派出 Boss（避免重复 spawn）
+    pub chapter_boss_spawned: bool,
+    /// 章节切换时显示标题/副标题的剩余时间
+    pub chapter_intro: f32,
+    /// 当章节内 Strafer 生成倒计时
+    pub strafer_timer: f32,
+    /// 已击杀 Boss 总数（结算用）
+    pub bosses_killed_run: u32,
+
     pub boss_alive: bool,
     pub super_charge: f32,
     pub combo: u32,
@@ -60,7 +74,12 @@ impl World {
             xp: 0,
             level: 1,
             xp_to_next: 6,
-            next_boss_at: 60.0,
+            chapter_idx: 0,
+            chapter_time: 0.0,
+            chapter_boss_spawned: false,
+            chapter_intro: 2.5,
+            strafer_timer: 0.0,
+            bosses_killed_run: 0,
             boss_alive: false,
             super_charge: 0.2,
             combo: 0,
@@ -71,7 +90,18 @@ impl World {
         }
     }
 
+    /// 当前章节是否进入 Endless（数值无封顶 + 双 Boss）。
+    pub fn is_endless(&self) -> bool {
+        self.chapter_idx as usize >= crate::chapter::CHAPTERS.len()
+    }
+
+    /// 敌人移速倍率：故事章节软封顶到 1.8；无尽不再封顶。
     pub fn diff_mul(&self) -> f32 {
-        (0.85 + self.run_time / 200.0).min(1.8)
+        let raw = 0.85 + self.run_time / 200.0;
+        if self.is_endless() {
+            raw.min(3.5)
+        } else {
+            raw.min(1.8)
+        }
     }
 }
