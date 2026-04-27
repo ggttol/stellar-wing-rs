@@ -1,69 +1,69 @@
 # Stellar Wing
 
-A Rust roguelike vertical shoot-'em-up built on [macroquad](https://github.com/not-fl3/macroquad). Pick a ship, dodge bullet patterns, level up, and choose from procedurally drawn upgrade cards run after run.
+一款基于 [macroquad](https://github.com/not-fl3/macroquad) 的 Rust 俯视角肉鸽飞行射击游戏。选择战机、躲避弹幕、升级成长，在每一局里从程序生成的强化卡牌中不断构筑自己的流派。
 
-## Features
+## 游戏特色
 
-- **Roguelike upgrade loop** — kill enemies → drop XP gems → level up → pick 1 of 3 cards (common / rare / epic / legendary).
-- **Three ships** — *Vanguard* (frontal burst), *Striker* (mobility), *Engineer* (starts with a sub-weapon).
-- **Five weapons** — main gun + four sub-weapon slots (Missile, Drone, Laser, Chain).
-- **Elite & boss modifiers** — `Armored / Berserk / Dasher` elites and `Frenzied / Bulwark / Summoner / StormCore` bosses, each with distinct telegraphs.
-- **Combo / SUPER** — chain kills for score multipliers; charge a screen-clearing super bomb.
-- **Bilingual UI** — English and Simplified Chinese, auto-detects a system CJK font.
-- **Local leaderboard** — top-5 scores persisted to `~/Library/Application Support/dev.ggttol.stellar-wing/save.json` (macOS) via the `directories` crate.
+- **肉鸽式强化循环** - 击败敌人 → 掉落经验宝石 → 升级 → 从 3 张卡牌中选 1 张（普通 / 稀有 / 史诗 / 传奇）。
+- **三种战机** - `Vanguard`（正面爆发）、`Striker`（高机动）、`Engineer`（开局自带副武器）。
+- **五种武器** - 主武器 + 四个副武器槽位（Missile、Drone、Laser、Chain）。
+- **精英与 Boss 修饰** - 精英词缀 `Armored / Berserk / Dasher`，Boss 词缀 `Frenzied / Bulwark / Summoner / StormCore`，都有独立的预警表现。
+- **Combo / SUPER** - 连杀提升分数倍率，并积攒可清屏的超级炸弹。
+- **双语界面** - 支持英文和简体中文，会自动尝试检测系统中的 CJK 字体。
+- **本地排行榜** - 前 5 名分数会通过 `directories` crate 持久化到 macOS 的 `~/Library/Application Support/dev.ggttol.stellar-wing/save.json`。
 
-## Build & run
+## 构建与运行
 
-Requires a recent stable Rust toolchain.
+需要较新的稳定版 Rust 工具链。
 
 ```sh
 cargo run --release
 ```
 
-`--release` is strongly recommended — debug builds noticeably affect frame pacing.
+强烈建议使用 `--release`，因为调试构建会明显影响帧率和手感。
 
-### macOS `.app` bundle
+### macOS `.app` 打包
 
 ```sh
 bash scripts/package_macos_app.sh
 ```
 
-Produces `dist/Stellar Wing.app` (uses `sips` and `iconutil`, macOS only).
+会生成 `dist/Stellar Wing.app`（仅 macOS 可用，依赖 `sips` 和 `iconutil`）。
 
-## Controls
+## 操作说明
 
-| Key | Action |
+| 按键 | 功能 |
 | --- | --- |
-| `WASD` / arrows | Move |
-| `Space` | Super bomb (when SUPER gauge full) |
-| `1` `2` `3` / `← →` + `Enter` / click | Pick upgrade card |
-| `P` / `Esc` | Pause |
-| `Q` (paused) | Quit to menu |
-| `M` | Toggle mute |
-| `F` | Toggle fullscreen |
-| `L` | Toggle language (EN / 中文) |
+| `WASD` / 方向键 | 移动 |
+| `Space` | 释放超级炸弹（SUPER 满时） |
+| `1` `2` `3` / `← →` + `Enter` / 鼠标点击 | 选择强化卡牌 |
+| `P` / `Esc` | 暂停 |
+| `Q`（暂停时） | 返回菜单 |
+| `M` | 静音开关 |
+| `F` | 全屏切换 |
+| `L` | 切换语言（EN / 中文） |
 
-The main gun is auto-firing.
+主武器会自动开火。
 
-## Project layout
+## 项目结构
 
-```
+```text
 src/
-  main.rs        # Game loop, scene state machine, HUD/menu drawing
-  scene.rs       # Top-level Scene enum
-  entity/        # Player, Bullet, Enemy (+ elite/boss mods), Pickup
-  weapon/        # MainGun + SubWeapon trait (Missile, Drone, Laser, Chain)
-  upgrade.rs     # Upgrade card pool and weighted draw
-  ship.rs        # Ship presets
-  save.rs        # JSON persistence (high score, leaderboard, settings)
-  lang.rs        # EN / ZH translations
-  art.rs bg.rs fx.rs audio.rs  # Rendering, starfield, particles, SFX
-assets/sfx*/     # Multiple sound packs; Audio::load picks one
-scripts/         # macOS .app packaging
+  main.rs        # 游戏主循环、场景状态机、HUD / 菜单绘制
+  scene.rs       # 顶层 Scene 枚举
+  entity/        # 玩家、子弹、敌人（含精英 / Boss 修饰）、掉落物
+  weapon/        # MainGun + SubWeapon trait（Missile、Drone、Laser、Chain）
+  upgrade.rs     # 强化卡牌池与权重抽取
+  ship.rs        # 战机预设
+  save.rs        # JSON 持久化（高分、排行榜、设置）
+  lang.rs        # 英文 / 中文文本
+  art.rs bg.rs fx.rs audio.rs  # 渲染、星空、粒子、音效
+assets/sfx*/     # 多套音效资源；Audio::load 会自动选择一套
+scripts/         # macOS .app 打包脚本
 ```
 
-See [`CLAUDE.md`](./CLAUDE.md) for deeper notes on the code architecture.
+更详细的代码架构说明请查看 [`CLAUDE.md`](./CLAUDE.md)。
 
-## License
+## 许可证
 
-MIT. See [LICENSE](./LICENSE).
+MIT。见 [LICENSE](./LICENSE)。
