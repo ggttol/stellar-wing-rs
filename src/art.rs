@@ -1,0 +1,310 @@
+use macroquad::prelude::*;
+
+use crate::entity::EnemyKind;
+use crate::ship::ShipType;
+
+fn rgba(r: u8, g: u8, b: u8, a: u8) -> Color {
+    Color::from_rgba(r, g, b, a)
+}
+
+fn tint(c: Color, mul: f32) -> Color {
+    Color::new(
+        (c.r * mul).clamp(0.0, 1.0),
+        (c.g * mul).clamp(0.0, 1.0),
+        (c.b * mul).clamp(0.0, 1.0),
+        c.a,
+    )
+}
+
+fn with_alpha(mut c: Color, a: f32) -> Color {
+    c.a = a;
+    c
+}
+
+pub fn draw_player_ship(ship: ShipType, x: f32, y: f32, w: f32, h: f32, t: f32) {
+    let (body, trim, canopy, engine) = match ship {
+        ShipType::Vanguard => (
+            rgba(196, 227, 255, 255),
+            rgba(0, 205, 255, 255),
+            rgba(255, 208, 102, 255),
+            rgba(110, 248, 255, 255),
+        ),
+        ShipType::Striker => (
+            rgba(227, 240, 255, 255),
+            rgba(30, 255, 197, 255),
+            rgba(120, 255, 240, 255),
+            rgba(68, 225, 255, 255),
+        ),
+        ShipType::Engineer => (
+            rgba(238, 230, 255, 255),
+            rgba(170, 140, 255, 255),
+            rgba(255, 217, 130, 255),
+            rgba(125, 249, 255, 255),
+        ),
+    };
+    let dark = tint(body, 0.42);
+    let mid = tint(body, 0.75);
+    let glow = with_alpha(trim, 0.22 + (t * 4.0).sin().abs() * 0.10);
+
+    draw_circle(x, y + h * 0.06, w * 0.44, glow);
+
+    match ship {
+        ShipType::Vanguard => {
+            draw_triangle(
+                vec2(x, y - h * 0.54),
+                vec2(x + w * 0.18, y + h * 0.16),
+                vec2(x - w * 0.18, y + h * 0.16),
+                body,
+            );
+            draw_triangle(
+                vec2(x - w * 0.48, y + h * 0.18),
+                vec2(x - w * 0.12, y - h * 0.02),
+                vec2(x - w * 0.18, y + h * 0.40),
+                mid,
+            );
+            draw_triangle(
+                vec2(x + w * 0.48, y + h * 0.18),
+                vec2(x + w * 0.12, y - h * 0.02),
+                vec2(x + w * 0.18, y + h * 0.40),
+                mid,
+            );
+            draw_rectangle(x - w * 0.13, y - h * 0.02, w * 0.26, h * 0.42, dark);
+            draw_rectangle(x - w * 0.36, y + h * 0.22, w * 0.22, h * 0.10, dark);
+            draw_rectangle(x + w * 0.14, y + h * 0.22, w * 0.22, h * 0.10, dark);
+            draw_triangle(
+                vec2(x, y - h * 0.48),
+                vec2(x + w * 0.10, y - h * 0.06),
+                vec2(x - w * 0.10, y - h * 0.06),
+                trim,
+            );
+        }
+        ShipType::Striker => {
+            draw_triangle(
+                vec2(x, y - h * 0.56),
+                vec2(x + w * 0.20, y + h * 0.18),
+                vec2(x - w * 0.20, y + h * 0.18),
+                body,
+            );
+            draw_triangle(
+                vec2(x - w * 0.50, y + h * 0.14),
+                vec2(x - w * 0.04, y - h * 0.14),
+                vec2(x - w * 0.12, y + h * 0.34),
+                trim,
+            );
+            draw_triangle(
+                vec2(x + w * 0.50, y + h * 0.14),
+                vec2(x + w * 0.04, y - h * 0.14),
+                vec2(x + w * 0.12, y + h * 0.34),
+                trim,
+            );
+            draw_triangle(
+                vec2(x - w * 0.16, y + h * 0.10),
+                vec2(x + w * 0.16, y + h * 0.10),
+                vec2(x, y + h * 0.42),
+                dark,
+            );
+            draw_triangle(
+                vec2(x, y - h * 0.42),
+                vec2(x + w * 0.08, y),
+                vec2(x - w * 0.08, y),
+                rgba(210, 255, 252, 255),
+            );
+        }
+        ShipType::Engineer => {
+            draw_rectangle(x - w * 0.12, y - h * 0.24, w * 0.24, h * 0.54, body);
+            draw_triangle(
+                vec2(x, y - h * 0.56),
+                vec2(x + w * 0.14, y - h * 0.12),
+                vec2(x - w * 0.14, y - h * 0.12),
+                trim,
+            );
+            draw_rectangle(x - w * 0.40, y - h * 0.02, w * 0.18, h * 0.34, mid);
+            draw_rectangle(x + w * 0.22, y - h * 0.02, w * 0.18, h * 0.34, mid);
+            draw_triangle(
+                vec2(x - w * 0.50, y + h * 0.18),
+                vec2(x - w * 0.12, y + h * 0.02),
+                vec2(x - w * 0.20, y + h * 0.36),
+                dark,
+            );
+            draw_triangle(
+                vec2(x + w * 0.50, y + h * 0.18),
+                vec2(x + w * 0.12, y + h * 0.02),
+                vec2(x + w * 0.20, y + h * 0.36),
+                dark,
+            );
+            draw_rectangle(x - w * 0.08, y + h * 0.22, w * 0.16, h * 0.16, dark);
+        }
+    }
+
+    draw_circle(x, y - h * 0.14, w * 0.09, with_alpha(canopy, 0.45));
+    draw_circle(x, y - h * 0.14, w * 0.05, canopy);
+
+    for off in [-1.0_f32, 1.0] {
+        let ex = x + off * w * 0.14;
+        draw_circle(ex, y + h * 0.34, w * 0.06, with_alpha(engine, 0.25));
+        draw_rectangle(ex - w * 0.028, y + h * 0.24, w * 0.056, h * 0.10, engine);
+    }
+}
+
+pub fn draw_player_preview(ship: ShipType, x: f32, y: f32, scale: f32, t: f32) {
+    let aura = match ship {
+        ShipType::Vanguard => rgba(0, 212, 255, 90),
+        ShipType::Striker => rgba(0, 255, 194, 90),
+        ShipType::Engineer => rgba(170, 140, 255, 90),
+    };
+    draw_circle(x, y + 6.0, 34.0 * scale, aura);
+    draw_player_ship(ship, x, y, 58.0 * scale, 72.0 * scale, t);
+}
+
+pub fn draw_enemy_ship(kind: EnemyKind, x: f32, y: f32, w: f32, h: f32, base: Color, hp_pct: f32) {
+    let dark = tint(base, 0.34);
+    let mid = tint(base, 0.72);
+    let hi = tint(base, 1.18);
+    let cockpit = rgba(255, 225, 140, 255);
+
+    match kind {
+        EnemyKind::Small => {
+            draw_triangle(
+                vec2(x, y + h * 0.52),
+                vec2(x + w * 0.28, y - h * 0.06),
+                vec2(x - w * 0.28, y - h * 0.06),
+                base,
+            );
+            draw_triangle(
+                vec2(x + w * 0.46, y - h * 0.18),
+                vec2(x + w * 0.10, y - h * 0.02),
+                vec2(x + w * 0.20, y + h * 0.18),
+                mid,
+            );
+            draw_triangle(
+                vec2(x - w * 0.46, y - h * 0.18),
+                vec2(x - w * 0.10, y - h * 0.02),
+                vec2(x - w * 0.20, y + h * 0.18),
+                mid,
+            );
+            draw_rectangle(x - w * 0.06, y - h * 0.18, w * 0.12, h * 0.18, dark);
+            draw_circle(x, y + h * 0.12, w * 0.06, cockpit);
+        }
+        EnemyKind::Medium => {
+            draw_triangle(
+                vec2(x, y + h * 0.52),
+                vec2(x + w * 0.20, y - h * 0.06),
+                vec2(x - w * 0.20, y - h * 0.06),
+                base,
+            );
+            draw_triangle(
+                vec2(x - w * 0.52, y),
+                vec2(x - w * 0.06, y - h * 0.18),
+                vec2(x - w * 0.18, y + h * 0.22),
+                mid,
+            );
+            draw_triangle(
+                vec2(x + w * 0.52, y),
+                vec2(x + w * 0.06, y - h * 0.18),
+                vec2(x + w * 0.18, y + h * 0.22),
+                mid,
+            );
+            draw_rectangle(x - w * 0.12, y - h * 0.26, w * 0.24, h * 0.36, dark);
+            draw_triangle(
+                vec2(x, y - h * 0.42),
+                vec2(x + w * 0.28, y - h * 0.10),
+                vec2(x - w * 0.28, y - h * 0.10),
+                hi,
+            );
+            draw_circle(x, y - h * 0.02, w * 0.07, cockpit);
+        }
+        EnemyKind::Large => {
+            draw_rectangle(x - w * 0.28, y - h * 0.28, w * 0.56, h * 0.52, base);
+            draw_triangle(
+                vec2(x, y + h * 0.56),
+                vec2(x + w * 0.18, y + h * 0.10),
+                vec2(x - w * 0.18, y + h * 0.10),
+                mid,
+            );
+            draw_triangle(
+                vec2(x - w * 0.56, y),
+                vec2(x - w * 0.20, y - h * 0.12),
+                vec2(x - w * 0.28, y + h * 0.24),
+                dark,
+            );
+            draw_triangle(
+                vec2(x + w * 0.56, y),
+                vec2(x + w * 0.20, y - h * 0.12),
+                vec2(x + w * 0.28, y + h * 0.24),
+                dark,
+            );
+            draw_rectangle(x - w * 0.44, y - h * 0.10, w * 0.16, h * 0.30, mid);
+            draw_rectangle(x + w * 0.28, y - h * 0.10, w * 0.16, h * 0.30, mid);
+            draw_rectangle(
+                x - w * 0.18,
+                y - h * 0.06,
+                w * 0.36,
+                h * 0.12,
+                rgba(22, 10, 20, 255),
+            );
+            draw_circle(x - w * 0.16, y - h * 0.02, w * 0.05, cockpit);
+            draw_circle(x + w * 0.16, y - h * 0.02, w * 0.05, cockpit);
+
+            draw_rectangle(
+                x - w * 0.30,
+                y - h * 0.42,
+                w * 0.60,
+                4.0,
+                rgba(0, 0, 0, 130),
+            );
+            draw_rectangle(
+                x - w * 0.30,
+                y - h * 0.42,
+                w * 0.60 * hp_pct.clamp(0.0, 1.0),
+                4.0,
+                rgba(120, 255, 160, 255),
+            );
+        }
+        EnemyKind::Boss => {
+            draw_rectangle(x - w * 0.20, y - h * 0.34, w * 0.40, h * 0.56, base);
+            draw_triangle(
+                vec2(x, y + h * 0.58),
+                vec2(x + w * 0.16, y + h * 0.10),
+                vec2(x - w * 0.16, y + h * 0.10),
+                hi,
+            );
+            draw_triangle(
+                vec2(x - w * 0.50, y - h * 0.08),
+                vec2(x - w * 0.10, y - h * 0.24),
+                vec2(x - w * 0.24, y + h * 0.26),
+                mid,
+            );
+            draw_triangle(
+                vec2(x + w * 0.50, y - h * 0.08),
+                vec2(x + w * 0.10, y - h * 0.24),
+                vec2(x + w * 0.24, y + h * 0.26),
+                mid,
+            );
+            draw_triangle(
+                vec2(x - w * 0.82, y - h * 0.04),
+                vec2(x - w * 0.50, y - h * 0.02),
+                vec2(x - w * 0.58, y + h * 0.22),
+                dark,
+            );
+            draw_triangle(
+                vec2(x + w * 0.82, y - h * 0.04),
+                vec2(x + w * 0.50, y - h * 0.02),
+                vec2(x + w * 0.58, y + h * 0.22),
+                dark,
+            );
+            draw_rectangle(
+                x - w * 0.32,
+                y - h * 0.06,
+                w * 0.64,
+                h * 0.14,
+                rgba(35, 8, 24, 255),
+            );
+            draw_circle(x - w * 0.16, y, w * 0.05, with_alpha(cockpit, 0.35));
+            draw_circle(x + w * 0.16, y, w * 0.05, with_alpha(cockpit, 0.35));
+            draw_circle(x - w * 0.16, y, w * 0.025, cockpit);
+            draw_circle(x + w * 0.16, y, w * 0.025, cockpit);
+            draw_circle(x, y - h * 0.18, w * 0.07, with_alpha(hi, 0.25));
+            draw_circle(x, y - h * 0.18, w * 0.04, hi);
+        }
+    }
+}
