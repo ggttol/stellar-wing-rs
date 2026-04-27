@@ -66,4 +66,4 @@ See [`CLAUDE.md`](./CLAUDE.md) for deeper notes on the code architecture.
 
 ## License
 
-MIT.
+MIT. See [LICENSE](./LICENSE).

@@ -1,5 +1,19 @@
-/target
-/dist
+# Rust
+/target/
 **/*.rs.bk
+
+# Distribution bundles
+/dist/
+
+# macOS
 .DS_Store
 save.json
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
