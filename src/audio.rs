@@ -82,6 +82,55 @@ impl Audio {
         self.muted = !self.muted;
         self.muted
     }
+
+    // —— 高层快捷方法：调用方不需要知道具体 Sound 句柄。 ——
+    pub fn play_shoot(&self) {
+        self.play(&self.shoot, 0.4);
+    }
+    pub fn play_hit(&self) {
+        self.play(&self.hit, 0.18);
+    }
+    pub fn play_hurt(&self) {
+        self.play(&self.hurt, 0.9);
+    }
+    pub fn play_explode_small(&self) {
+        self.play(&self.explode_small, 0.10);
+    }
+    pub fn play_explode_big(&self) {
+        self.play(&self.explode_big, 1.0);
+    }
+    pub fn play_powerup(&self) {
+        self.play(&self.powerup, 0.28);
+    }
+    pub fn play_super(&self) {
+        self.play(&self.powerup, 0.26);
+    }
+    pub fn play_levelup(&self) {
+        self.play(&self.levelup, 0.32);
+    }
+    pub fn play_gameover(&self) {
+        self.play(&self.gameover, 1.0);
+    }
+    pub fn play_click(&self) {
+        self.play(&self.click, 0.6);
+    }
+    pub fn play_pause(&self) {
+        self.play(&self.click, 0.5);
+    }
+
+    /// 场景切换到 Menu / Playing / GameOver / BossAlive 时调用。
+    /// 当前是占位实现 —— Phase 2 用合成 BGM 替换。
+    pub fn set_track(&mut self, _track: BgmTrack) {}
+}
+
+/// BGM 轨道标识。Phase 2 接入合成 BGM 时启用。
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum BgmTrack {
+    None,
+    Menu,
+    Play,
+    Boss,
 }
 
 async fn snd(bytes: &[u8]) -> Option<Sound> {

@@ -3,16 +3,11 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Lang {
     En,
+    #[default]
     Zh,
-}
-
-impl Default for Lang {
-    fn default() -> Self {
-        Lang::Zh
-    }
 }
 
 impl Lang {
@@ -32,7 +27,7 @@ impl Lang {
 
 /// 查表翻译。`s` 是英文字面量；未命中时原样返回。
 /// 返回的生命周期跟随入参——字面量自然是 'static，命中分支也是 'static。
-pub fn t<'a>(s: &'a str, lang: Lang) -> &'a str {
+pub fn t(s: &str, lang: Lang) -> &str {
     if lang == Lang::En {
         return s;
     }

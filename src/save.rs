@@ -69,7 +69,7 @@ impl Save {
     pub fn push_record(&mut self, score: u32, level: u32) {
         let date = today();
         self.leaderboard.push(Record { score, level, date });
-        self.leaderboard.sort_by(|a, b| b.score.cmp(&a.score));
+        self.leaderboard.sort_by_key(|r| std::cmp::Reverse(r.score));
         self.leaderboard.truncate(5);
         if score > self.high {
             self.high = score;
