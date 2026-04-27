@@ -10,13 +10,9 @@ use serde::{Deserialize, Serialize};
 use crate::lang::Lang;
 use crate::ship::ShipType;
 
-/// 飞船解锁位掩码：bit0 = Vanguard（永久），bit1 = Striker，bit2 = Engineer。
+/// 飞船解锁位掩码：bit0 = Vanguard（永久解锁，固定占位）。
+/// 当前 3 艘船全部默认开放；位掩码保留给将来追加的第 4+ 艘船。
 const SHIP_BIT_VANGUARD: u32 = 1 << 0;
-const SHIP_BIT_STRIKER: u32 = 1 << 1;
-const SHIP_BIT_ENGINEER: u32 = 1 << 2;
-
-const STRIKER_UNLOCK_LIFETIME: u64 = 5_000;
-const ENGINEER_UNLOCK_LIFETIME: u64 = 15_000;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Save {
@@ -141,20 +137,14 @@ impl Save {
         }
     }
 
-    pub fn ship_unlocked(&self, ship: ShipType) -> bool {
-        match ship {
-            ShipType::Vanguard => true,
-            ShipType::Striker => self.unlocked_ships & SHIP_BIT_STRIKER != 0,
-            ShipType::Engineer => self.unlocked_ships & SHIP_BIT_ENGINEER != 0,
-        }
+    pub fn ship_unlocked(&self, _ship: ShipType) -> bool {
+        // 当前 3 艘船全部默认解锁。锁定框架（unlocked_ships 位掩码 +
+        // ship_unlock_cost）保留给将来追加的第 4+ 艘船 / 涂装。
+        true
     }
 
-    pub fn ship_unlock_cost(ship: ShipType) -> Option<u64> {
-        match ship {
-            ShipType::Vanguard => None,
-            ShipType::Striker => Some(STRIKER_UNLOCK_LIFETIME),
-            ShipType::Engineer => Some(ENGINEER_UNLOCK_LIFETIME),
-        }
+    pub fn ship_unlock_cost(_ship: ShipType) -> Option<u64> {
+        None
     }
 
     /// 一局结束的奖励登记。返回前端要展示的奖励包。
@@ -179,20 +169,8 @@ impl Save {
         }
         self.push_record(score, level);
 
-        // 解锁判定。
-        let mut newly_unlocked = Vec::new();
-        if self.unlocked_ships & SHIP_BIT_STRIKER == 0
-            && self.lifetime_score >= STRIKER_UNLOCK_LIFETIME
-        {
-            self.unlocked_ships |= SHIP_BIT_STRIKER;
-            newly_unlocked.push(ShipType::Striker);
-        }
-        if self.unlocked_ships & SHIP_BIT_ENGINEER == 0
-            && self.lifetime_score >= ENGINEER_UNLOCK_LIFETIME
-        {
-            self.unlocked_ships |= SHIP_BIT_ENGINEER;
-            newly_unlocked.push(ShipType::Engineer);
-        }
+        // 当前没有需要按 lifetime 解锁的飞船；future-proof 用列表占位。
+        let newly_unlocked: Vec<ShipType> = Vec::new();
 
         RunReward {
             stardust_gained: stardust,
