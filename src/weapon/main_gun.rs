@@ -2,12 +2,11 @@
 //!  Lv1 单发  ·  Lv2 双发  ·  Lv3 三向扇形  ·  Lv4 五向  ·  Lv5 五向 + 穿透 2
 
 use crate::entity::{Bullet, HitSource, Player};
-use crate::weapon::{roll_crit, DecayGauge};
+use crate::weapon::roll_crit;
 
 pub struct MainGun {
     pub level: u8,
     last_shot: f32,
-    decay: DecayGauge,
 }
 
 impl MainGun {
@@ -15,27 +14,17 @@ impl MainGun {
         Self {
             level: 1,
             last_shot: -10.0,
-            decay: DecayGauge::new(),
         }
     }
 
     pub fn level_up(&mut self) {
         if self.level < 5 {
             self.level += 1;
-            self.decay.refill(self.level);
         }
     }
 
     pub fn is_max(&self) -> bool {
         self.level >= 5
-    }
-
-    pub fn decay_tick(&mut self, dt: f32) {
-        self.decay.tick_dt(dt, &mut self.level, 1);
-    }
-
-    pub fn decay_ratio(&self) -> Option<f32> {
-        self.decay.ratio(self.level, 1)
     }
 
     pub fn tick(&mut self, t: f32, player: &Player, bullets: &mut Vec<Bullet>) -> bool {

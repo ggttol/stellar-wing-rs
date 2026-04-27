@@ -8,6 +8,8 @@ pub enum Scene {
     Instructions,
     Leaderboard,
     Settings,
+    /// 永久天赋购买页（光标位置）
+    Talents(usize),
     Playing,
     Paused,
     UpgradePick(Vec<Card>),

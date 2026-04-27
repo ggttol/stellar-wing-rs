@@ -15,6 +15,7 @@ mod save;
 mod scene;
 mod ship;
 mod spawn;
+mod talents;
 mod upgrade;
 mod weapon;
 mod world;
@@ -82,10 +83,15 @@ async fn main() {
                 if is_key_pressed(KeyCode::Right) || is_key_pressed(KeyCode::D) {
                     menu_ship = step_unlocked_ship(menu_ship, 1, &save_data);
                 }
+                if is_key_pressed(KeyCode::T) {
+                    audio_inst.play_click();
+                    scene = Scene::Talents(0);
+                }
                 if is_key_pressed(KeyCode::Enter) || is_key_pressed(KeyCode::Space) {
                     let ship = ShipType::ALL[menu_ship];
                     if save_data.ship_unlocked(ship) {
                         world = World::new(ship);
+                        talents::apply_to_world(&mut world, &save_data);
                         fx = fx::Fx::default();
                         audio_inst.play_click();
                         audio_inst.set_track(BgmTrack::Play);
@@ -96,6 +102,29 @@ async fn main() {
                 }
                 if is_key_pressed(KeyCode::Escape) {
                     break;
+                }
+                fx.update(dt);
+            }
+            Scene::Talents(cursor) => {
+                let n = talents::TALENTS.len();
+                if is_key_pressed(KeyCode::Up) || is_key_pressed(KeyCode::W) {
+                    *cursor = (*cursor + n - 1) % n;
+                }
+                if is_key_pressed(KeyCode::Down) || is_key_pressed(KeyCode::S) {
+                    *cursor = (*cursor + 1) % n;
+                }
+                if is_key_pressed(KeyCode::Enter) || is_key_pressed(KeyCode::Space) {
+                    let id = talents::TALENTS[*cursor].id;
+                    if talents::try_buy(&mut save_data, id) {
+                        save::write(&save_data);
+                        audio_inst.play_powerup();
+                    } else {
+                        audio_inst.play_pause();
+                    }
+                }
+                if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Q) {
+                    audio_inst.play_click();
+                    scene = Scene::Menu;
                 }
                 fx.update(dt);
             }
@@ -202,6 +231,7 @@ async fn main() {
             Scene::GameOver => {
                 if is_key_pressed(KeyCode::Enter) || is_key_pressed(KeyCode::Space) {
                     world = World::new(world.player.ship);
+                    talents::apply_to_world(&mut world, &save_data);
                     fx = fx::Fx::default();
                     audio_inst.set_track(BgmTrack::Play);
                     scene = Scene::Playing;
@@ -234,6 +264,9 @@ async fn main() {
                 font,
                 lang,
             ),
+            Scene::Talents(cursor) => {
+                hud::draw_talents(&save_data, *cursor, t_acc, font, lang);
+            }
             Scene::Playing => {
                 hud::draw_world(&world, t_acc);
                 fx.draw();
@@ -346,6 +379,10 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
     if world.combo_flash > 0.0 {
         world.combo_flash -= dt;
     }
+    if world.overload_flash > 0.0 {
+        world.overload_flash = (world.overload_flash - dt * 1.6).max(0.0);
+    }
+    world.synergy.tick(dt);
 
     world.player.update(dt, t, fx);
 

@@ -5,12 +5,11 @@ use macroquad::prelude::*;
 
 use crate::entity::{Bullet, Enemy, Player};
 use crate::fx::Fx;
-use crate::weapon::{roll_crit, DecayGauge, SubWeapon};
+use crate::weapon::{roll_crit, SubWeapon};
 
 pub struct Chain {
     level: u8,
     last_shot: f32,
-    decay: DecayGauge,
 }
 
 impl Chain {
@@ -18,7 +17,6 @@ impl Chain {
         Self {
             level: 1,
             last_shot: -10.0,
-            decay: DecayGauge::new(),
         }
     }
     fn interval(&self) -> f32 {
@@ -45,14 +43,7 @@ impl SubWeapon for Chain {
     fn level_up(&mut self) {
         if self.level < 5 {
             self.level += 1;
-            self.decay.refill(self.level);
         }
-    }
-    fn decay_tick(&mut self, dt: f32) {
-        self.decay.tick_dt(dt, &mut self.level, 1);
-    }
-    fn decay_ratio(&self) -> Option<f32> {
-        self.decay.ratio(self.level, 1)
     }
 
     fn tick(

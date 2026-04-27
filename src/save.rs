@@ -44,6 +44,20 @@ pub struct Save {
     /// 历史最远到达的章节 (0..5) +1（人类可读）；endless 不计入。
     #[serde(default)]
     pub furthest_chapter: u32,
+
+    // —— 永久天赋等级 ——
+    #[serde(default)]
+    pub talent_dmg: u32,
+    #[serde(default)]
+    pub talent_hp: u32,
+    #[serde(default)]
+    pub talent_speed: u32,
+    #[serde(default)]
+    pub talent_xp: u32,
+    #[serde(default)]
+    pub talent_stardust: u32,
+    #[serde(default)]
+    pub talent_super: u32,
 }
 
 fn default_ship_mask() -> u32 {
@@ -64,6 +78,12 @@ impl Default for Save {
             runs: 0,
             unlocked_ships: default_ship_mask(),
             furthest_chapter: 0,
+            talent_dmg: 0,
+            talent_hp: 0,
+            talent_speed: 0,
+            talent_xp: 0,
+            talent_stardust: 0,
+            talent_super: 0,
         }
     }
 }
@@ -145,8 +165,10 @@ impl Save {
         bosses_in_run: u32,
         chapter_reached: u32,
     ) -> RunReward {
-        // Stardust：分数主，Boss 加成。
-        let stardust = (score as u64) / 100 + (bosses_in_run as u64) * 50;
+        // Stardust：分数主，Boss 加成；再叠精炼天赋倍率。
+        let stardust_mul = crate::talents::stardust_multiplier(self);
+        let raw = (score as u64) / 100 + (bosses_in_run as u64) * 50;
+        let stardust = ((raw as f32) * stardust_mul) as u64;
         let lifetime_before = self.lifetime_score;
         self.stardust = self.stardust.saturating_add(stardust);
         self.lifetime_score = self.lifetime_score.saturating_add(score as u64);

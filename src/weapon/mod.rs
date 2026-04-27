@@ -13,53 +13,75 @@ pub use missile::Missile;
 use crate::entity::{Bullet, Enemy, Player};
 use crate::fx::Fx;
 
-pub struct DecayGauge {
-    timer: f32,
+use crate::entity::EnemyKind;
+
+/// 共鸣槽：击杀填充，满槽进入"过载"状态，全武器伤害 ×OVERLOAD_DAMAGE_MUL。
+/// 替代了旧的 DecayGauge —— 武器等级现在永久保留，节奏感靠这个槽提供。
+pub struct SynergyGauge {
+    /// 0..1，过载期间不再累计（视觉上变成倒计时条）
+    pub charge: f32,
+    /// >0 = 过载中，剩余秒数
+    pub overload_remaining: f32,
 }
 
-impl DecayGauge {
+pub const OVERLOAD_DURATION: f32 = 6.0;
+pub const OVERLOAD_DAMAGE_MUL: f32 = 1.30;
+const IDLE_DRAIN_PER_SEC: f32 = 0.05;
+
+impl SynergyGauge {
     pub fn new() -> Self {
-        Self { timer: 0.0 }
+        Self {
+            charge: 0.0,
+            overload_remaining: 0.0,
+        }
     }
 
-    pub fn refill(&mut self, level: u8) {
-        self.timer = Self::duration_for(level);
+    /// 击杀按敌人体型填充共鸣。返回 true = 这一击触发了过载。
+    pub fn add_kill(&mut self, kind: EnemyKind) -> bool {
+        if self.overload_remaining > 0.0 {
+            return false;
+        }
+        let amount = match kind {
+            EnemyKind::Small | EnemyKind::Kamikaze => 0.05,
+            EnemyKind::Medium | EnemyKind::Strafer => 0.08,
+            EnemyKind::Large => 0.15,
+            EnemyKind::Boss => 0.50,
+        };
+        self.charge += amount;
+        if self.charge >= 1.0 {
+            self.charge = 0.0;
+            self.overload_remaining = OVERLOAD_DURATION;
+            return true;
+        }
+        false
     }
 
-    pub fn tick_dt(&mut self, dt: f32, level: &mut u8, floor: u8) {
-        if *level <= floor {
-            self.timer = 0.0;
-            return;
-        }
-
-        self.timer -= dt;
-        if self.timer > 0.0 {
-            return;
-        }
-
-        *level = level.saturating_sub(1).max(floor);
-        if *level > floor {
-            self.timer = Self::duration_for(*level);
+    pub fn tick(&mut self, dt: f32) {
+        if self.overload_remaining > 0.0 {
+            self.overload_remaining = (self.overload_remaining - dt).max(0.0);
         } else {
-            self.timer = 0.0;
+            self.charge = (self.charge - IDLE_DRAIN_PER_SEC * dt).max(0.0);
         }
     }
 
-    pub fn ratio(&self, level: u8, floor: u8) -> Option<f32> {
-        if level <= floor {
-            None
+    pub fn is_overloaded(&self) -> bool {
+        self.overload_remaining > 0.0
+    }
+
+    pub fn damage_mul(&self) -> f32 {
+        if self.is_overloaded() {
+            OVERLOAD_DAMAGE_MUL
         } else {
-            Some((self.timer / Self::duration_for(level)).clamp(0.0, 1.0))
+            1.0
         }
     }
 
-    fn duration_for(level: u8) -> f32 {
-        match level {
-            0 | 1 => 0.0,
-            2 => 28.0,
-            3 => 22.0,
-            4 => 17.0,
-            _ => 13.0,
+    /// HUD 用进度条比例。过载时表现为剩余时长。
+    pub fn ratio(&self) -> f32 {
+        if self.is_overloaded() {
+            (self.overload_remaining / OVERLOAD_DURATION).clamp(0.0, 1.0)
+        } else {
+            self.charge.clamp(0.0, 1.0)
         }
     }
 }
@@ -69,8 +91,6 @@ pub trait SubWeapon {
     fn id(&self) -> &'static str;
     fn level(&self) -> u8;
     fn level_up(&mut self);
-    fn decay_tick(&mut self, dt: f32);
-    fn decay_ratio(&self) -> Option<f32>;
     fn max_level(&self) -> u8 {
         5
     }
@@ -108,13 +128,10 @@ impl WeaponSlot {
         bullets: &mut Vec<Bullet>,
         fx: &mut Fx,
     ) -> bool {
-        self.main.decay_tick(dt);
         let fired_main = self.main.tick(t, player, bullets);
         for s in &mut self.subs {
-            s.decay_tick(dt);
             s.tick(dt, t, player, enemies, bullets, fx);
         }
-
         fired_main
     }
 

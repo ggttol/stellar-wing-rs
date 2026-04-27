@@ -10,6 +10,7 @@ use crate::entity::{enemy::TelegraphKind, EnemyKind};
 use crate::lang::{t, Lang};
 use crate::save::{RunReward, Save};
 use crate::ship::ShipType;
+use crate::talents::{self, TALENTS};
 use crate::upgrade::Card;
 use crate::world::World;
 
@@ -491,6 +492,19 @@ pub fn draw_menu(
     draw_ship_stats(cx, hangar_y + hangar_h + 18.0, ship, font, lang);
 
     draw_launch_prompt(cx, CFG.h - 96.0, t_acc, font, lang);
+
+    // 进入天赋页的提示
+    let talents_hint = format!("[T]  {}", t("TALENTS", lang));
+    let dh = mt(&talents_hint, 12, font);
+    dt(
+        &talents_hint,
+        cx - dh.width * 0.5,
+        CFG.h - 70.0,
+        12.0,
+        alpha(GOLD, 0.8 + (t_acc * 2.5).sin() * 0.15),
+        font,
+    );
+
     draw_key_row(cx, CFG.h - 38.0, audio, font, lang);
 
     // 语言指示靠左下角，不抢戏
@@ -548,6 +562,8 @@ pub fn draw_play_hud(world: &World, high: u32, font: Option<&Font>, lang: Lang) 
         Color::from_rgba(180, 200, 220, 255),
         font,
     );
+
+    draw_resonance(world, font, lang);
 
     if let Some(boss) = world
         .enemies
@@ -615,6 +631,7 @@ pub fn draw_play_hud(world: &World, high: u32, font: Option<&Font>, lang: Lang) 
         draw_heart(x, 24.0, 8.0, Color::from_rgba(255, 85, 119, 255));
     }
 
+    // 武器等级面板（仅文字 —— 等级永不回退）
     let mut wy = CFG.h - 40.0;
     let wx = 16.0;
     let gun_label = format!("{}{}", t("Gun Lv", lang), world.weapons.main.level);
@@ -626,16 +643,6 @@ pub fn draw_play_hud(world: &World, high: u32, font: Option<&Font>, lang: Lang) 
         Color::from_rgba(125, 249, 255, 255),
         font,
     );
-    if let Some(ratio) = world.weapons.main.decay_ratio() {
-        draw_rectangle(wx, wy + 4.0, 74.0, 5.0, Color::from_rgba(20, 30, 50, 255));
-        draw_rectangle(
-            wx,
-            wy + 4.0,
-            74.0 * ratio,
-            5.0,
-            Color::from_rgba(0, 212, 255, 255),
-        );
-    }
     wy -= 18.0;
     for s in &world.weapons.subs {
         let label = t(pretty_id(s.id()), lang);
@@ -648,16 +655,6 @@ pub fn draw_play_hud(world: &World, high: u32, font: Option<&Font>, lang: Lang) 
             Color::from_rgba(255, 209, 102, 255),
             font,
         );
-        if let Some(ratio) = s.decay_ratio() {
-            draw_rectangle(wx, wy + 3.0, 64.0, 4.0, Color::from_rgba(20, 30, 50, 255));
-            draw_rectangle(
-                wx,
-                wy + 3.0,
-                64.0 * ratio,
-                4.0,
-                Color::from_rgba(255, 160, 90, 255),
-            );
-        }
         wy -= 16.0;
     }
     if world.player.magnet_until > world.run_time {
@@ -1059,6 +1056,182 @@ fn draw_heart(x: f32, y: f32, s: f32, c: Color) {
         vec2(x, y + s * 1.2),
         c,
     );
+}
+
+/// 永久天赋购买页。
+pub fn draw_talents(
+    save: &Save,
+    cursor: usize,
+    t_acc: f32,
+    font: Option<&Font>,
+    lang: Lang,
+) {
+    let cx = CFG.w * 0.5;
+
+    // 标题
+    let title = t("TALENTS", lang);
+    let dim = mt(title, 36, font);
+    dt(
+        title,
+        cx - dim.width * 0.5,
+        70.0,
+        36.0,
+        ICE_CYAN,
+        font,
+    );
+    let sub = t("Spend stardust to gain permanent power", lang);
+    let ds = mt(sub, 12, font);
+    dt(sub, cx - ds.width * 0.5, 92.0, 12.0, MUTED, font);
+
+    // 顶部 stardust 余额（带闪烁星标）
+    let pulse = 0.7 + (t_acc * 3.0).sin() * 0.2;
+    let dust = format!("✦ {}", save.stardust);
+    let dd = mt(&dust, 22, font);
+    dt(
+        &dust,
+        cx - dd.width * 0.5,
+        128.0,
+        22.0,
+        alpha(GOLD, pulse),
+        font,
+    );
+
+    // 列表
+    let row_h = 64.0;
+    let list_x = 20.0;
+    let list_w = CFG.w - 40.0;
+    let list_y = 156.0;
+
+    for (i, def) in TALENTS.iter().enumerate() {
+        let y = list_y + i as f32 * row_h;
+        let cur = talents::level_of(save, def.id);
+        let max = def.max_level();
+        let next_cost = def.next_cost(cur);
+        let can_afford = next_cost.is_some_and(|c| save.stardust >= c);
+        let selected = i == cursor;
+
+        // 行底
+        let fill = if selected {
+            Color::new(0.06, 0.10, 0.18, 1.0)
+        } else {
+            Color::new(0.020, 0.035, 0.075, 1.0)
+        };
+        draw_rectangle(list_x, y, list_w, row_h - 6.0, fill);
+        let edge_c = if selected {
+            alpha(NEON_CYAN, 0.85)
+        } else {
+            alpha(PANEL_EDGE, 0.30)
+        };
+        draw_rectangle_lines(list_x, y, list_w, row_h - 6.0, 1.0, edge_c);
+        if selected {
+            draw_corner_brackets(list_x, y, list_w, row_h - 6.0, 10.0, 2.0, NEON_CYAN);
+        }
+
+        // 名称 + 描述
+        let name = if lang == Lang::Zh { def.name_zh } else { def.name_en };
+        dt(name, list_x + 14.0, y + 18.0, 14.0, ICE_CYAN, font);
+        let desc = if lang == Lang::Zh { def.desc_zh } else { def.desc_en };
+        dt(desc, list_x + 14.0, y + 36.0, 11.0, MUTED, font);
+
+        // 等级 pip 条
+        let pip_w = 14.0;
+        let pip_h = 6.0;
+        let gap = 3.0;
+        let pip_total = max as f32 * (pip_w + gap) - gap;
+        let pip_x = list_x + list_w - pip_total - 14.0;
+        for k in 0..max {
+            let bx = pip_x + k as f32 * (pip_w + gap);
+            let on = k < cur;
+            let c = if on {
+                GOLD
+            } else {
+                Color::new(0.06, 0.10, 0.18, 1.0)
+            };
+            draw_rectangle(bx, y + 14.0, pip_w, pip_h, c);
+        }
+
+        // 右下：成本 / MAX
+        let cost_label = if let Some(c) = next_cost {
+            format!("✦ {}", c)
+        } else {
+            t("MAX", lang).to_string()
+        };
+        let dc = mt(&cost_label, 12, font);
+        let cost_color = if next_cost.is_none() {
+            GOLD
+        } else if can_afford {
+            ICE_CYAN
+        } else {
+            MUTED
+        };
+        dt(
+            &cost_label,
+            list_x + list_w - dc.width - 14.0,
+            y + 40.0,
+            12.0,
+            cost_color,
+            font,
+        );
+    }
+
+    // 底部提示
+    let hint = t("↑↓ select   ENTER buy   ESC back", lang);
+    let dh = mt(hint, 12, font);
+    dt(
+        hint,
+        cx - dh.width * 0.5,
+        CFG.h - 28.0,
+        12.0,
+        MUTED,
+        font,
+    );
+}
+
+/// 共鸣槽 / 过载状态条（顶部中央，时间 ↓ 下方）。
+fn draw_resonance(world: &World, font: Option<&Font>, lang: Lang) {
+    let bar_w = 240.0;
+    let bar_h = 6.0;
+    let cx = CFG.w * 0.5;
+    let by = 38.0;
+    let bx = cx - bar_w * 0.5;
+
+    draw_rectangle(bx, by, bar_w, bar_h, Color::from_rgba(20, 30, 50, 220));
+
+    let ratio = world.synergy.ratio();
+    let overloaded = world.synergy.is_overloaded();
+    let fill_color = if overloaded {
+        // 过载：金色脉冲
+        let pulse = 0.85 + (world.run_time * 12.0).sin() * 0.15;
+        Color::new(1.0, 0.86 * pulse, 0.3, 1.0)
+    } else {
+        Color::new(0.49, 0.97, 1.0, 0.85)
+    };
+    draw_rectangle(bx, by, bar_w * ratio, bar_h, fill_color);
+
+    // 标签
+    let label = if overloaded {
+        format!(
+            "◆ {} ◆ {:.1}s",
+            t("OVERLOAD", lang),
+            world.synergy.overload_remaining
+        )
+    } else {
+        let pct = (ratio * 100.0).round() as u32;
+        format!("{}  {}%", t("RESONANCE", lang), pct)
+    };
+    let dl = mt(&label, 11, font);
+    let label_color = if overloaded {
+        Color::new(1.0, 0.86, 0.3, 1.0)
+    } else {
+        Color::from_rgba(180, 200, 220, 255)
+    };
+    dt(&label, cx - dl.width * 0.5, by + bar_h + 12.0, 11.0, label_color, font);
+
+    // 触发瞬间的全屏淡金色冲击波（进入过载）
+    if world.overload_flash > 0.0 {
+        let a = world.overload_flash * 0.18;
+        draw_rectangle(0.0, 0.0, CFG.w, CFG.h, Color::new(1.0, 0.86, 0.3, a));
+    }
 }
 
 /// 章节切入时的标题/副标题 + "CH N / TOTAL" 章节计数。

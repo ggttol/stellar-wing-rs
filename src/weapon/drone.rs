@@ -5,13 +5,12 @@ use macroquad::prelude::*;
 
 use crate::entity::{Bullet, Enemy, HitSource, Player};
 use crate::fx::Fx;
-use crate::weapon::{roll_crit, DecayGauge, SubWeapon};
+use crate::weapon::{roll_crit, SubWeapon};
 
 pub struct Drone {
     level: u8,
     angle: f32,
     last_shot: f32,
-    decay: DecayGauge,
 }
 
 impl Drone {
@@ -20,7 +19,6 @@ impl Drone {
             level: 1,
             angle: 0.0,
             last_shot: -10.0,
-            decay: DecayGauge::new(),
         }
     }
 
@@ -57,14 +55,7 @@ impl SubWeapon for Drone {
     fn level_up(&mut self) {
         if self.level < 5 {
             self.level += 1;
-            self.decay.refill(self.level);
         }
-    }
-    fn decay_tick(&mut self, dt: f32) {
-        self.decay.tick_dt(dt, &mut self.level, 1);
-    }
-    fn decay_ratio(&self) -> Option<f32> {
-        self.decay.ratio(self.level, 1)
     }
 
     fn tick(

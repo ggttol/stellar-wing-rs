@@ -2,7 +2,7 @@
 
 use crate::entity::{Bullet, Enemy, Pickup, Player};
 use crate::ship::ShipType;
-use crate::weapon::WeaponSlot;
+use crate::weapon::{SynergyGauge, WeaponSlot};
 
 pub struct SpawnTimers {
     pub small: f32,
@@ -55,6 +55,11 @@ pub struct World {
     pub combo_note_idx: usize,
     /// 主武器击中音效冷却（秒），避免一帧打几十发就响成一片。
     pub hit_sfx_cooldown: f32,
+
+    /// 共鸣槽：击杀填充、满槽过载（×1.30 伤害）。
+    pub synergy: SynergyGauge,
+    /// 进入过载瞬间的视觉脉冲（0..1，倒数到 0）
+    pub overload_flash: f32,
 }
 
 impl World {
@@ -87,6 +92,8 @@ impl World {
             combo_flash: 0.0,
             combo_note_idx: 0,
             hit_sfx_cooldown: 0.0,
+            synergy: SynergyGauge::new(),
+            overload_flash: 0.0,
         }
     }
 

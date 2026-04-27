@@ -5,13 +5,12 @@ use macroquad::prelude::*;
 
 use crate::entity::{Bullet, Enemy, Player};
 use crate::fx::Fx;
-use crate::weapon::{DecayGauge, SubWeapon};
+use crate::weapon::SubWeapon;
 
 pub struct Laser {
     level: u8,
     /// 0..1，> on_duty 表示在冷却。每 cycle 秒回到 0。
     phase: f32,
-    decay: DecayGauge,
 }
 
 impl Laser {
@@ -19,7 +18,6 @@ impl Laser {
         Self {
             level: 1,
             phase: 0.0,
-            decay: DecayGauge::new(),
         }
     }
 
@@ -51,14 +49,7 @@ impl SubWeapon for Laser {
     fn level_up(&mut self) {
         if self.level < 5 {
             self.level += 1;
-            self.decay.refill(self.level);
         }
-    }
-    fn decay_tick(&mut self, dt: f32) {
-        self.decay.tick_dt(dt, &mut self.level, 1);
-    }
-    fn decay_ratio(&self) -> Option<f32> {
-        self.decay.ratio(self.level, 1)
     }
 
     fn tick(

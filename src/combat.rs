@@ -51,6 +51,7 @@ fn steer_one(b: &mut Bullet, enemies: &[Enemy], dt: f32) {
 /// 玩家子弹打敌人，结算伤害与暴击。
 pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32, dt: f32) {
     let crit_mul = world.player.stats.crit_mul;
+    let overload_mul = world.synergy.damage_mul();
     if world.hit_sfx_cooldown > 0.0 {
         world.hit_sfx_cooldown -= dt;
     }
@@ -65,7 +66,7 @@ pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: 
             if !bullet_hits_enemy(b, e) {
                 continue;
             }
-            let mut damage = b.damage * e.damage_mul();
+            let mut damage = b.damage * e.damage_mul() * overload_mul;
             if e.static_mark && !b.is_crit && b.source != HitSource::Enemy {
                 damage *= crit_mul;
                 b.is_crit = true;
@@ -113,6 +114,18 @@ pub fn process_kills(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) -> b
             continue;
         }
         e.dead = true;
+        // 共鸣槽填充。返回 true 表示这一击触发了过载。
+        let triggered_overload = world.synergy.add_kill(e.kind);
+        if triggered_overload {
+            world.overload_flash = 1.0;
+            audio.play_super(); // 过载触发的"轰"音
+            fx.explode(
+                world.player.x,
+                world.player.y,
+                2.2,
+                Color::from_rgba(255, 220, 110, 255),
+            );
+        }
         world.combo = world.combo.saturating_add(1);
         world.combo_timer = 1.2;
         world.combo_flash = 0.4;
