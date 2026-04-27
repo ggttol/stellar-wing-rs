@@ -1,63 +1,63 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+这个文件为 Claude Code（claude.ai/code）在本仓库中工作时提供指引。
 
-## Project
+## 项目概览
 
-Stellar Wing — a Rust roguelike vertical shoot-em-up built on [macroquad](https://github.com/not-fl3/macroquad). Single binary crate (`stellar-wing`).
+Stellar Wing 是一款基于 [macroquad](https://github.com/not-fl3/macroquad) 的 Rust 肉鸽俯视角飞行射击游戏。项目是单一二进制 crate（`stellar-wing`）。
 
-## Common commands
+## 常用命令
 
-- `cargo run` — build and launch the game (debug).
-- `cargo run --release` — much smoother frame rate; prefer this when actually playing/testing gameplay feel.
-- `cargo build --release` — release binary at `target/release/stellar-wing`.
-- `cargo check` / `cargo clippy` — fast iteration on type/lint errors.
-- `bash scripts/package_macos_app.sh` — build release binary and assemble `dist/Stellar Wing.app` (uses `sips` + `iconutil`, macOS only).
+- `cargo run` - 构建并启动游戏（调试模式）。
+- `cargo run --release` - 帧率更稳定；实际游玩或测试手感时优先使用。
+- `cargo build --release` - 在 `target/release/stellar-wing` 生成发布版二进制。
+- `cargo check` / `cargo clippy` - 快速迭代类型错误和 lint 问题。
+- `bash scripts/package_macos_app.sh` - 构建发布版并组装 `dist/Stellar Wing.app`（使用 `sips` + `iconutil`，仅 macOS 可用）。
 
-There is no test suite; `cargo test` is a no-op.
+项目没有测试套件，`cargo test` 基本不会做任何事。
 
-## Architecture
+## 架构
 
-Single-threaded macroquad app. `main.rs` is slim — it owns the window/loop, the `Scene` state machine, and orchestrates a per-frame `step_play` that delegates to focused modules.
+这是一个单线程的 macroquad 应用。`main.rs` 保持尽量精简，它负责窗口/主循环、`Scene` 状态机，以及按帧调度 `step_play`，把具体逻辑分发给各个模块。
 
-### Game loop (`src/main.rs`)
+### 游戏主循环（`src/main.rs`）
 
-- `Scene` (`src/scene.rs`) is the top-level state machine: `Menu → Playing ↔ Paused → UpgradePick(cards) → Playing → … → GameOver → Menu`. The match in `main()` per-frame drives input + scene transitions and dispatches to `hud::*` for rendering.
-- `World` (`src/world.rs`) is the run-time game state (player, weapons, bullets, enemies, pickups, score, level, XP, super-charge, combo, boss timer). All fields are `pub` because gameplay systems are split across modules — that's intentional, not sloppy.
-- `step_play` (in `main.rs`) is the per-frame gameplay tick. It encodes the *order* of subsystems: combo decay → player/weapons/enemy/bullet update → spawn → homing → pickup collection → super bomb → player-bullet vs enemies → kill processing (combo, drops, drone relay) → enemy-bullet vs player → enemy contact → retain dead. Each subsystem lives in `combat.rs` or `spawn.rs`.
+- `Scene`（`src/scene.rs`）是顶层状态机：`Menu → Playing ↔ Paused → UpgradePick(cards) → Playing → … → GameOver → Menu`。`main()` 里的每帧 `match` 负责输入、场景切换，并调用 `hud::*` 进行绘制。
+- `World`（`src/world.rs`）是运行时游戏状态，包含玩家、武器、子弹、敌人、掉落物、分数、等级、经验、SUPER 能量、连击、Boss 计时器等。所有字段都设为 `pub`，因为不同的玩法系统分散在多个模块里，这样设计是有意为之。
+- `step_play`（在 `main.rs` 中）是每帧的核心玩法 tick。它明确规定了各系统的执行顺序：连击衰减 → 玩家/武器/敌人/子弹更新 → 刷怪 → 追踪 → 拾取 → SUPER 炸弹 → 玩家子弹打敌人 → 击杀处理（连击、掉落、无人机接力）→ 敌方子弹打玩家 → 敌人碰撞 → 清理死亡对象。各个子系统分别位于 `combat.rs` 或 `spawn.rs`。
 
-### Modules in dependency order
+### 模块依赖顺序
 
-- `world.rs` — `World`, `SpawnTimers`. Plain data, no logic.
-- `spawn.rs` — `spawn_normals`, `spawn_enemy`, `spawn_boss`, `drop_xp_gems`, `maybe_drop_special`. Difficulty scaling from `world.run_time` lives here (interval `lerp`, hp/score multipliers, elite roll).
-- `combat.rs` — gameplay collisions and kill resolution: `steer_homing_bullets`, `resolve_player_bullets`, `process_kills`, `resolve_enemy_bullets`, `resolve_enemy_player_contact`, `trigger_super`, `collect_pickups`, `spawn_relay_missile`. The crit / static-mark / missile-mark logic and the combo→super-charge/score multipliers live in `process_kills`.
-- `collision.rs` — only the geometric primitives (`hit_circle`, AABB-vs-circle helpers). Don't put gameplay logic here.
-- `hud.rs` — Menu/HUD/Pause/UpgradePick/GameOver rendering, plus `draw_world` (pickups → bullets → enemies → weapons → player). The mouse-coordinate rescale pattern (`mx * CFG.w / screen_width()`) is in `main.rs` next to `card_at`.
+- `world.rs` - `World`、`SpawnTimers`。只有数据，没有逻辑。
+- `spawn.rs` - `spawn_normals`、`spawn_enemy`、`spawn_boss`、`drop_xp_gems`、`maybe_drop_special`。这里负责从 `world.run_time` 进行难度缩放（间隔 `lerp`、生命/分数倍率、精英判定）。
+- `combat.rs` - 玩法碰撞与击杀结算：`steer_homing_bullets`、`resolve_player_bullets`、`process_kills`、`resolve_enemy_bullets`、`resolve_enemy_player_contact`、`trigger_super`、`collect_pickups`、`spawn_relay_missile`。暴击 / 静电标记 / 导弹标记逻辑，以及连击 → SUPER 能量 / 分数倍率的处理都在 `process_kills` 里。
+- `collision.rs` - 只放几何原语（`hit_circle`、AABB 与圆形的辅助函数）。不要把玩法逻辑放进来。
+- `hud.rs` - 菜单 / HUD / 暂停 / 强化选择 / GameOver 的绘制，以及 `draw_world`（拾取物 → 子弹 → 敌人 → 武器 → 玩家）。鼠标坐标重映射模式（`mx * CFG.w / screen_width()`）写在 `main.rs` 的 `card_at` 附近。
 
-### Entities (`src/entity/`)
+### 实体（`src/entity/`）
 
-`mod.rs` re-exports `Player`, `Bullet`, `Enemy` (+ `EnemyKind`, `EliteMod`, `BossMod`, `TelegraphKind`), `Pickup` (+ `PickupKind`), and `HitSource`. Bullets carry a `HitSource` tag so kill-credit logic (e.g. "drone relay") and damage modifiers (missile mark, static mark crit) work without per-weapon collision code. `Player::stats` holds the multipliers (`damage_mul`, `crit_chance`, `crit_mul`, `xp_mul`, `score_mul`, `pickup_radius`, `max_lives`, …) that upgrade cards mutate.
+`mod.rs` 重新导出 `Player`、`Bullet`、`Enemy`（以及 `EnemyKind`、`EliteMod`、`BossMod`、`TelegraphKind`）、`Pickup`（以及 `PickupKind`）和 `HitSource`。子弹会携带 `HitSource` 标记，这样击杀归属逻辑（例如“无人机接力”）和伤害修正（导弹标记、静电标记暴击）就可以在不为每种武器单独写碰撞代码的前提下工作。`Player::stats` 保存各种倍率（`damage_mul`、`crit_chance`、`crit_mul`、`xp_mul`、`score_mul`、`pickup_radius`、`max_lives` 等），这些会被强化卡修改。
 
-### Weapons (`src/weapon/`)
+### 武器（`src/weapon/`）
 
-- `MainGun` is a concrete type, not a trait object — hot path stays monomorphic.
-- Sub-weapons (`Missile`, `Drone`, `Laser`, `Chain`) implement `SubWeapon` and live as `Box<dyn SubWeapon>` in `WeaponSlot.subs` (max 4). Adding a new sub-weapon = new file in `src/weapon/`, impl `SubWeapon`, expose via `mod.rs`, and add corresponding upgrade cards in `src/upgrade.rs`.
-- `DecayGauge` (in `weapon/mod.rs`) is the shared "weapon level decays over time unless refreshed" mechanic; weapons hold one and call `decay_tick`/`refill`.
-- `roll_crit(player, base_mul)` is the unified crit roll all weapons should use so `crit_chance`/`crit_mul` stats apply consistently.
+- `MainGun` 是具体类型，不是 trait object，这样热点路径可以保持单态化。
+- 副武器（`Missile`、`Drone`、`Laser`、`Chain`）实现 `SubWeapon`，并以 `Box<dyn SubWeapon>` 的形式存放在 `WeaponSlot.subs` 中（最多 4 个）。新增副武器的流程是：在 `src/weapon/` 新建文件，实现 `SubWeapon`，在 `mod.rs` 里导出，并在 `src/upgrade.rs` 里补对应的强化卡。
+- `DecayGauge`（在 `weapon/mod.rs` 中）是共享的“武器等级会随时间衰减，除非被刷新”的机制；武器会持有它，并调用 `decay_tick` / `refill`。
+- `roll_crit(player, base_mul)` 是所有武器都应使用的统一暴击逻辑，这样 `crit_chance` / `crit_mul` 这两个属性才能一致生效。
 
-### Other modules
+### 其他模块
 
-- `upgrade.rs` — card pool + `draw_n` weighted sampler; each `Card` has an `apply: fn(&mut Player, &mut WeaponSlot)`.
-- `ship.rs` — `ShipType::ALL` defines selectable ships and `apply()` mutates starting `Player`/`WeaponSlot`.
-- `art.rs`, `bg.rs`, `fx.rs` — pure rendering (ship sprites, starfield, particle/float-text FX).
-- `audio/` — fully procedural. `synth.rs` has oscillators (sine/square/saw/triangle/noise), ADSR, one-pole LP, frequency-swept note builder, and an in-memory 16-bit PCM mono WAV encoder. `sfx.rs` and `bgm.rs` use those primitives to render every SFX and BGM track at startup into `Vec<u8>`, fed to `macroquad::audio::load_sound_from_bytes`. **Don't add WAV files to `assets/`** — design the sound in code so it stays parameterizable. BGM has three tracks (`Menu` / `Play` / `Boss`); `Audio::set_track` is idempotent and `main.rs` calls it on Scene transitions and per-frame from `Playing` (to flip Play↔Boss when boss spawns/dies). `play_kill_combo` picks a kill-step pitch by combo count.
-- `save.rs` — JSON persistence via `directories::ProjectDirs("dev", "ggttol", "stellar-wing")` → `~/Library/Application Support/dev.ggttol.stellar-wing/save.json` on macOS. Stores high score, top-5 leaderboard, mute, fullscreen, language. Date is computed without `chrono` (see `epoch_days_to_ymd`).
-- `lang.rs` — `t(key, lang)` lookup for English/Chinese strings. `main.rs` tries to load a system CJK font (`try_load_cjk_font`) and falls back to English if none is found.
-- `config.rs` — global `CFG` with logical resolution (`w`, `h`); the window is fixed-size and not resizable.
+- `upgrade.rs` - 卡牌池和 `draw_n` 加权抽取器；每张 `Card` 都带有 `apply: fn(&mut Player, &mut WeaponSlot)`。
+- `ship.rs` - `ShipType::ALL` 定义可选战机，`apply()` 会修改初始 `Player` / `WeaponSlot`。
+- `art.rs`、`bg.rs`、`fx.rs` - 纯渲染代码（战机精灵、星空、粒子 / 浮字特效）。
+- `audio/` - 完全程序生成。`synth.rs` 里有振荡器（sine / square / saw / triangle / noise）、ADSR、一极点低通、频率扫频音符构建器，以及内存中的 16 位 PCM 单声道 WAV 编码器。`sfx.rs` 和 `bgm.rs` 会在启动时使用这些原语把所有音效和 BGM 轨道渲染成 `Vec<u8>`，再喂给 `macroquad::audio::load_sound_from_bytes`。**不要往 `assets/` 里新增 WAV 文件**，要把声音设计放在代码里，这样更容易参数化。BGM 有三个轨道（`Menu` / `Play` / `Boss`）；`Audio::set_track` 是幂等的，`main.rs` 会在 Scene 切换时调用它，并在 `Playing` 场景中每帧调用它，以便在 Boss 出现或死亡时在 `Play` 和 `Boss` 之间切换。`play_kill_combo` 会根据连击数选择击杀音阶。
+- `save.rs` - 通过 `directories::ProjectDirs("dev", "ggttol", "stellar-wing")` 做 JSON 持久化，在 macOS 上对应 `~/Library/Application Support/dev.ggttol.stellar-wing/save.json`。保存内容包括最高分、前 5 排行榜、静音、全屏、语言。日期计算不依赖 `chrono`（见 `epoch_days_to_ymd`）。
+- `lang.rs` - 英文 / 中文文本查找函数 `t(key, lang)`。`main.rs` 会尝试加载系统 CJK 字体（`try_load_cjk_font`），如果没有找到就回退到英文。
+- `config.rs` - 全局 `CFG`，包含逻辑分辨率（`w`、`h`）；窗口尺寸固定，不能调整大小。
 
-### Conventions worth knowing
+### 需要记住的约定
 
-- Logical coordinates use `CFG.w` × `CFG.h`; mouse input is rescaled (`mx * CFG.w / screen_width()`) — follow that pattern for any new mouse hit-tests.
-- Time is mostly tracked as `t_acc` (wall-clock-ish accumulator for animation) vs. `world.run_time` (gameplay clock, paused with the game). Don't mix them.
-- `dt` is clamped to `0.05` per frame in the main loop — assume bounded steps.
-- New comments/strings are routinely written in Chinese in this codebase; match the surrounding style rather than translating existing ones.
+- 逻辑坐标使用 `CFG.w` × `CFG.h`；鼠标输入需要重映射（`mx * CFG.w / screen_width()`）- 任何新的鼠标命中检测都要沿用这个模式。
+- 时间主要分为 `t_acc`（更接近真实时间的动画累加器）和 `world.run_time`（玩法时钟，暂停时会停止）- 不要混用。
+- 主循环里每帧的 `dt` 会被夹到 `0.05` - 可以假设步长是有上限的。
+- 这个代码库里的新注释 / 字符串经常会直接写中文；新增内容时尽量跟随周围风格，而不是把已有内容硬翻成英文。
