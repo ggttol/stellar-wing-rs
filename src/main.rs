@@ -328,6 +328,7 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
             let x = CFG.w * 0.5;
             world.enemies.push(spawn::spawn_boss(x, t));
             world.boss_alive = true;
+            audio.play_boss_intro();
         }
     }
 

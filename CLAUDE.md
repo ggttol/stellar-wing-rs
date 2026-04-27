@@ -18,13 +18,21 @@ There is no test suite; `cargo test` is a no-op.
 
 ## Architecture
 
-The game is a single-threaded macroquad app. `main.rs` owns the loop and is large (~1500 lines) because it inlines scene transitions, spawning, collision dispatch, and HUD/menu drawing. When making changes, expect cross-cutting edits here rather than in many small files.
+Single-threaded macroquad app. `main.rs` is slim — it owns the window/loop, the `Scene` state machine, and orchestrates a per-frame `step_play` that delegates to focused modules.
 
 ### Game loop (`src/main.rs`)
 
-- `World` is the run-time game state (player, weapons, bullets, enemies, pickups, score, level, XP, super-charge, combo, boss timer). It is recreated per run via `World::new(ShipType)`.
-- `Scene` (`src/scene.rs`) is the top-level state machine: `Menu → Playing ↔ Paused → UpgradePick(cards) → Playing → … → GameOver → Menu`. The match in `main()` per-frame drives input, then dispatches to a single `step_play` for gameplay and to `draw_*` helpers for rendering.
-- `step_play` is the per-frame gameplay tick: weapons fire → enemies/bullets update → homing steering → pickup pickup/XP → super bomb (Space) → bullet↔enemy collisions (with crit/static-mark logic) → enemy deaths (combo, super-charge gain, drops, "drone relay" perk) → bullet↔player and enemy↔player collisions → retain dead. Difficulty scales from `world.run_time` via `diff_mul()` and the spawn-interval `lerp` in `spawn_normals`.
+- `Scene` (`src/scene.rs`) is the top-level state machine: `Menu → Playing ↔ Paused → UpgradePick(cards) → Playing → … → GameOver → Menu`. The match in `main()` per-frame drives input + scene transitions and dispatches to `hud::*` for rendering.
+- `World` (`src/world.rs`) is the run-time game state (player, weapons, bullets, enemies, pickups, score, level, XP, super-charge, combo, boss timer). All fields are `pub` because gameplay systems are split across modules — that's intentional, not sloppy.
+- `step_play` (in `main.rs`) is the per-frame gameplay tick. It encodes the *order* of subsystems: combo decay → player/weapons/enemy/bullet update → spawn → homing → pickup collection → super bomb → player-bullet vs enemies → kill processing (combo, drops, drone relay) → enemy-bullet vs player → enemy contact → retain dead. Each subsystem lives in `combat.rs` or `spawn.rs`.
+
+### Modules in dependency order
+
+- `world.rs` — `World`, `SpawnTimers`. Plain data, no logic.
+- `spawn.rs` — `spawn_normals`, `spawn_enemy`, `spawn_boss`, `drop_xp_gems`, `maybe_drop_special`. Difficulty scaling from `world.run_time` lives here (interval `lerp`, hp/score multipliers, elite roll).
+- `combat.rs` — gameplay collisions and kill resolution: `steer_homing_bullets`, `resolve_player_bullets`, `process_kills`, `resolve_enemy_bullets`, `resolve_enemy_player_contact`, `trigger_super`, `collect_pickups`, `spawn_relay_missile`. The crit / static-mark / missile-mark logic and the combo→super-charge/score multipliers live in `process_kills`.
+- `collision.rs` — only the geometric primitives (`hit_circle`, AABB-vs-circle helpers). Don't put gameplay logic here.
+- `hud.rs` — Menu/HUD/Pause/UpgradePick/GameOver rendering, plus `draw_world` (pickups → bullets → enemies → weapons → player). The mouse-coordinate rescale pattern (`mx * CFG.w / screen_width()`) is in `main.rs` next to `card_at`.
 
 ### Entities (`src/entity/`)
 
@@ -42,7 +50,7 @@ The game is a single-threaded macroquad app. `main.rs` owns the loop and is larg
 - `upgrade.rs` — card pool + `draw_n` weighted sampler; each `Card` has an `apply: fn(&mut Player, &mut WeaponSlot)`.
 - `ship.rs` — `ShipType::ALL` defines selectable ships and `apply()` mutates starting `Player`/`WeaponSlot`.
 - `art.rs`, `bg.rs`, `fx.rs` — pure rendering (ship sprites, starfield, particle/float-text FX).
-- `audio.rs` — preloads SFX from `assets/sfx*/`. Multiple sfx packs exist (`sfx`, `sfx_focus`, `sfx_piano`, `sfx_piano_combo`, `sfx_real`, `sfx_safe`); `Audio::load` picks one — check there before swapping packs. `play_kill_combo` advances a melodic note index per kill.
+- `audio/` — fully procedural. `synth.rs` has oscillators (sine/square/saw/triangle/noise), ADSR, one-pole LP, frequency-swept note builder, and an in-memory 16-bit PCM mono WAV encoder. `sfx.rs` and `bgm.rs` use those primitives to render every SFX and BGM track at startup into `Vec<u8>`, fed to `macroquad::audio::load_sound_from_bytes`. **Don't add WAV files to `assets/`** — design the sound in code so it stays parameterizable. BGM has three tracks (`Menu` / `Play` / `Boss`); `Audio::set_track` is idempotent and `main.rs` calls it on Scene transitions and per-frame from `Playing` (to flip Play↔Boss when boss spawns/dies). `play_kill_combo` picks a kill-step pitch by combo count.
 - `save.rs` — JSON persistence via `directories::ProjectDirs("dev", "ggttol", "stellar-wing")` → `~/Library/Application Support/dev.ggttol.stellar-wing/save.json` on macOS. Stores high score, top-5 leaderboard, mute, fullscreen, language. Date is computed without `chrono` (see `epoch_days_to_ymd`).
 - `lang.rs` — `t(key, lang)` lookup for English/Chinese strings. `main.rs` tries to load a system CJK font (`try_load_cjk_font`) and falls back to English if none is found.
 - `config.rs` — global `CFG` with logical resolution (`w`, `h`); the window is fixed-size and not resizable.
