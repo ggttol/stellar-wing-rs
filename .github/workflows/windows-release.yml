@@ -3,6 +3,9 @@ name: Publish Windows Release Asset
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-and-upload:
     runs-on: windows-latest
