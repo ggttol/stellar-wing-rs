@@ -82,11 +82,23 @@ pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: 
                 b.is_crit = true;
                 e.static_mark = false;
             }
+            // Prism：Reflector 弹丸穿过激光束时 +50% 伤害 & 穿透 +1
+            if b.source == HitSource::Reflector && world.player.perks.prism {
+                let in_beam = (b.x - world.player.x).abs() < 22.0 && b.y < world.player.y;
+                if in_beam {
+                    damage *= 1.5;
+                    b.pierce = b.pierce.saturating_add(1);
+                }
+            }
             e.hp -= damage;
             e.hit_flash = 0.08;
             e.last_hit = b.source;
             if b.source == HitSource::Missile {
                 e.marked_until = t + 2.0;
+            }
+            // Wave Cannon 标记（配合 Resonance 联动）
+            if b.source == HitSource::Wave {
+                e.wave_marked = true;
             }
             fx.burst(
                 b.x,

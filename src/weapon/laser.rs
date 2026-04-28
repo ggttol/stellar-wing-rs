@@ -28,7 +28,7 @@ impl Laser {
         0.45 + (self.level as f32 - 1.0) * 0.06
     }
     fn dps(&self, player: &Player) -> f32 {
-        let base = 1.1 + self.level as f32 * 0.45;
+        let base = 1.6 + self.level as f32 * 0.55;
         base * player.stats.damage_mul
     }
     fn width(&self) -> f32 {
@@ -76,8 +76,11 @@ impl SubWeapon for Laser {
                 if player.perks.heat_lock && e.marked_until > t {
                     mul += 0.4;
                 }
-                e.hp -= dps * mul * dt;
-                e.hit_flash = 0.06;
+                let dmg = dps * mul * e.damage_mul() * dt;
+                e.hp -= dmg;
+                if dmg > 0.0 {
+                    e.hit_flash = 0.06;
+                }
                 e.last_hit = crate::entity::HitSource::Laser;
                 // 偶发命中粒子
                 if rand_chance(dt * 25.0) {
@@ -87,12 +90,12 @@ impl SubWeapon for Laser {
         }
     }
 
-    fn draw(&self, player: &Player, t: f32) {
+    fn draw(&self, player: &Player, t: f32, ox: f32, oy: f32) {
         if !self.is_on() {
             // OFF 期间画一个微弱的瞄准虚线
             let mut c = Color::from_rgba(125, 249, 255, 255);
             c.a = 0.15;
-            draw_line(player.x, player.y - player.h * 0.5, player.x, 0.0, 1.0, c);
+            draw_line(player.x + ox, player.y - player.h * 0.5 + oy, player.x + ox, oy, 1.0, c);
             return;
         }
         let half_w = self.width() * 0.5;
@@ -101,26 +104,26 @@ impl SubWeapon for Laser {
         let mut outer = Color::from_rgba(125, 249, 255, 255);
         outer.a = 0.25 * pulse;
         draw_rectangle(
-            player.x - half_w * 1.6,
-            0.0,
+            player.x + ox - half_w * 1.6,
+            oy,
             half_w * 3.2,
-            player.y - player.h * 0.5,
+            player.y + oy - player.h * 0.5,
             outer,
         );
         // 主束
         let mut core = Color::from_rgba(220, 250, 255, 255);
         core.a = 0.85 * pulse;
         draw_rectangle(
-            player.x - half_w,
-            0.0,
+            player.x + ox - half_w,
+            oy,
             half_w * 2.0,
-            player.y - player.h * 0.5,
+            player.y + oy - player.h * 0.5,
             core,
         );
         // 中心高亮
         let mut hot = WHITE;
         hot.a = pulse;
-        draw_rectangle(player.x - 1.5, 0.0, 3.0, player.y - player.h * 0.5, hot);
+        draw_rectangle(player.x + ox - 1.5, oy, 3.0, player.y + oy - player.h * 0.5, hot);
     }
 }
 

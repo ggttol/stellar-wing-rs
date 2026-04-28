@@ -5,7 +5,7 @@ use ::rand::thread_rng;
 use macroquad::color::Color;
 
 use crate::entity::Player;
-use crate::weapon::{Chain, Drone, Laser, Missile, WeaponSlot};
+use crate::weapon::{Chain, Drone, Laser, Missile, Reflector, VoidRift, WaveCannon, WeaponSlot};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Rarity {
@@ -214,12 +214,84 @@ fn chain_up_eligible(p: &Player, w: &WeaponSlot) -> bool {
     mk_up_eligible("chain")(p, w)
 }
 
+// —— 新武器：Void Rift / Wave / Reflector ——————————————————————
+
+fn unlock_rift(_: &mut Player, w: &mut WeaponSlot) {
+    if !w.has("rift") && w.subs.len() < 4 {
+        w.subs.push(Box::new(VoidRift::new()));
+    }
+}
+fn unlock_rift_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    mk_unlock_eligible("rift")(p, w)
+}
+fn rift_up(_: &mut Player, w: &mut WeaponSlot) {
+    if let Some(s) = w.find_mut("rift") { s.level_up(); }
+}
+fn rift_up_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    mk_up_eligible("rift")(p, w)
+}
+
+fn unlock_wave(_: &mut Player, w: &mut WeaponSlot) {
+    if !w.has("wave") && w.subs.len() < 4 {
+        w.subs.push(Box::new(WaveCannon::new()));
+    }
+}
+fn unlock_wave_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    mk_unlock_eligible("wave")(p, w)
+}
+fn wave_up(_: &mut Player, w: &mut WeaponSlot) {
+    if let Some(s) = w.find_mut("wave") { s.level_up(); }
+}
+fn wave_up_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    mk_up_eligible("wave")(p, w)
+}
+
+fn unlock_reflector(_: &mut Player, w: &mut WeaponSlot) {
+    if !w.has("reflector") && w.subs.len() < 4 {
+        w.subs.push(Box::new(Reflector::new()));
+    }
+}
+fn unlock_reflector_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    mk_unlock_eligible("reflector")(p, w)
+}
+fn reflector_up(_: &mut Player, w: &mut WeaponSlot) {
+    if let Some(s) = w.find_mut("reflector") { s.level_up(); }
+}
+fn reflector_up_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    mk_up_eligible("reflector")(p, w)
+}
+
+// —— 新联动 Perks ————————————————————————————————
+
+fn gravity_well_apply(p: &mut Player, _: &mut WeaponSlot) {
+    p.perks.gravity_well = true;
+}
+fn gravity_well_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    !p.perks.gravity_well && w.has("rift") && w.has("drone")
+}
+
+fn resonance_apply(p: &mut Player, _: &mut WeaponSlot) {
+    p.perks.resonance = true;
+}
+fn resonance_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    !p.perks.resonance && w.has("wave") && w.has("chain")
+}
+
+fn prism_apply(p: &mut Player, _: &mut WeaponSlot) {
+    p.perks.prism = true;
+}
+fn prism_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    !p.perks.prism && w.has("reflector") && w.has("laser")
+}
+
 fn always(_: &Player, _: &WeaponSlot) -> bool {
     true
 }
 
-pub fn pool() -> Vec<Card> {
-    vec![
+static CARD_POOL: std::sync::OnceLock<Vec<Card>> = std::sync::OnceLock::new();
+
+pub fn pool() -> &'static [Card] {
+    CARD_POOL.get_or_init(|| vec![
         // 数值（白卡）
         c(
             "fire_rate",
@@ -433,7 +505,82 @@ pub fn pool() -> Vec<Card> {
             drone_relay_apply,
             drone_relay_eligible,
         ),
-    ]
+        // —— 新武器解锁（紫卡）————————————
+        c(
+            "u_rift",
+            Rarity::Epic,
+            "Void Rift",
+            "Deploy a pulsing damage field",
+            unlock_rift,
+            unlock_rift_eligible,
+        ),
+        c(
+            "u_wave",
+            Rarity::Epic,
+            "Wave Cannon",
+            "Sine-wave bullets sweep the field",
+            unlock_wave,
+            unlock_wave_eligible,
+        ),
+        c(
+            "u_reflector",
+            Rarity::Epic,
+            "Reflector",
+            "Bullets bounce off screen edges",
+            unlock_reflector,
+            unlock_reflector_eligible,
+        ),
+        // —— 新武器升级（蓝卡）————————————
+        c(
+            "rift_up",
+            Rarity::Rare,
+            "Rift +1",
+            "More rifts · faster pulses · wider",
+            rift_up,
+            rift_up_eligible,
+        ),
+        c(
+            "wave_up",
+            Rarity::Rare,
+            "Wave +1",
+            "More waves · amplitude · speed",
+            wave_up,
+            wave_up_eligible,
+        ),
+        c(
+            "reflector_up",
+            Rarity::Rare,
+            "Reflector +1",
+            "More shots · bounces · speed",
+            reflector_up,
+            reflector_up_eligible,
+        ),
+        // —— 新联动 Perks（紫卡）————————————
+        c(
+            "gravity_well",
+            Rarity::Epic,
+            "Gravity Well",
+            "Rifts slowly pull enemies inward",
+            gravity_well_apply,
+            gravity_well_eligible,
+        ),
+        c(
+            "resonance",
+            Rarity::Epic,
+            "Resonance",
+            "Wave + Chain: hits trigger extra jumps",
+            resonance_apply,
+            resonance_eligible,
+        ),
+        c(
+            "prism",
+            Rarity::Epic,
+            "Prism",
+            "Reflector + Laser: bounce through beam = +50% dmg & pierce",
+            prism_apply,
+            prism_eligible,
+        ),
+    ])
 }
 
 fn c(
@@ -455,19 +602,42 @@ fn c(
 }
 
 /// 抽 N 张去重卡，按 eligible + 稀有度权重过滤。
-pub fn draw_n(n: usize, player: &Player, weapons: &WeaponSlot) -> Vec<Card> {
+pub fn draw_n(n: usize, player: &mut Player, weapons: &WeaponSlot) -> Vec<Card> {
     use ::rand::Rng;
     let mut rng = thread_rng();
-    let all: Vec<Card> = pool()
-        .into_iter()
+    let mut pool: Vec<Card> = pool()
+        .iter()
+        .cloned()
         .filter(|c| (c.eligible)(player, weapons))
         .collect();
-    if all.is_empty() {
+    if pool.is_empty() {
         return vec![];
     }
+
+    // 保底：连续 5 次未见副武器解锁卡，且还有空槽 → 强制出一张
+    let unlock_count = pool.iter().filter(|c| c.id.starts_with("u_")).count();
+    let pity_trigger = player.perks.pity_unlock >= 5
+        && weapons.subs.len() < 4
+        && unlock_count > 0;
+
     // 加权随机（带去重）
     let mut picks: Vec<Card> = Vec::with_capacity(n);
-    let mut pool: Vec<Card> = all;
+
+    // 保底触发：从池中随机选一张解锁卡
+    if pity_trigger {
+        let unlock_indices: Vec<usize> = pool
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.id.starts_with("u_"))
+            .map(|(i, _)| i)
+            .collect();
+        if !unlock_indices.is_empty() {
+            let idx = unlock_indices[rng.gen_range(0..unlock_indices.len())];
+            picks.push(pool.swap_remove(idx));
+            player.perks.pity_unlock = 0;
+        }
+    }
+
     while picks.len() < n && !pool.is_empty() {
         let total: u32 = pool.iter().map(|c| c.rarity.weight()).sum();
         let mut r = rng.gen_range(0..total);
@@ -482,5 +652,14 @@ pub fn draw_n(n: usize, player: &Player, weapons: &WeaponSlot) -> Vec<Card> {
         picks.push(pool.swap_remove(idx));
     }
     picks.shuffle(&mut rng);
+
+    // 更新保底计数：本轮出了解锁卡则重置，否则 +1
+    let got_unlock = picks.iter().any(|c| c.id.starts_with("u_"));
+    if got_unlock {
+        player.perks.pity_unlock = 0;
+    } else {
+        player.perks.pity_unlock = player.perks.pity_unlock.saturating_add(1);
+    }
+
     picks
 }

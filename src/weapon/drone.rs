@@ -78,7 +78,7 @@ impl SubWeapon for Drone {
             let dx = a.cos() * self.radius();
             let dy = a.sin() * self.radius();
             let mut b = Bullet::player_shot(player.x + dx, player.y + dy, 0.0, -700.0);
-            let (dmg, crit) = roll_crit(player, 0.55);
+            let (dmg, crit) = roll_crit(player, 0.80);
             b.damage = dmg;
             b.is_crit = crit;
             b.w = 3.0;
@@ -88,14 +88,14 @@ impl SubWeapon for Drone {
         }
     }
 
-    fn draw(&self, player: &Player, t: f32) {
+    fn draw(&self, player: &Player, t: f32, ox: f32, oy: f32) {
         let n = self.count();
         for i in 0..n {
             let a = self.angle + i as f32 * std::f32::consts::TAU / n as f32;
             let dx = a.cos() * self.radius();
             let dy = a.sin() * self.radius();
-            let x = player.x + dx;
-            let y = player.y + dy;
+            let x = player.x + dx + ox;
+            let y = player.y + dy + oy;
             let pulse = 0.7 + (t * 8.0 + i as f32).sin() * 0.3;
             let mut g = Color::from_rgba(125, 249, 255, 255);
             g.a = 0.4 * pulse;

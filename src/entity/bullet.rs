@@ -9,6 +9,9 @@ pub enum HitSource {
     Drone,
     Laser,
     Chain,
+    Rift,
+    Wave,
+    Reflector,
     Enemy,
 }
 
@@ -27,6 +30,13 @@ pub struct Bullet {
     pub homing: bool,
     pub is_crit: bool,
     pub source: HitSource,
+    // Wave Cannon：正弦摆动
+    pub spawn_x: f32,
+    pub wave_amp: f32,
+    pub wave_freq: f32,
+    pub wave_phase: f32,
+    // Reflector：反弹
+    pub bounces: u8,
 }
 
 impl Bullet {
@@ -45,6 +55,11 @@ impl Bullet {
             homing: false,
             is_crit: false,
             source: HitSource::MainGun,
+            spawn_x: x,
+            wave_amp: 0.0,
+            wave_freq: 0.0,
+            wave_phase: 0.0,
+            bounces: 0,
         }
     }
 
@@ -63,21 +78,68 @@ impl Bullet {
             homing: false,
             is_crit: false,
             source: HitSource::Enemy,
+            spawn_x: x,
+            wave_amp: 0.0,
+            wave_freq: 0.0,
+            wave_phase: 0.0,
+            bounces: 0,
         }
     }
 
     pub fn update(&mut self, dt: f32) {
         self.x += self.vx * dt;
         self.y += self.vy * dt;
+
+        // Wave Cannon 正弦摆动
+        if self.wave_amp > 0.0 {
+            self.wave_phase += dt * self.wave_freq;
+            self.x = self.spawn_x + self.wave_amp * self.wave_phase.sin();
+        }
+
+        // Reflector 屏幕边缘反弹
+        if self.bounces > 0 {
+            let mut bounced = false;
+            if self.x <= 0.0 {
+                self.x = 0.0;
+                self.vx = self.vx.abs();
+                bounced = true;
+            }
+            if self.x >= CFG.w {
+                self.x = CFG.w;
+                self.vx = -self.vx.abs();
+                bounced = true;
+            }
+            if self.y <= 0.0 {
+                self.y = 0.0;
+                self.vy = self.vy.abs();
+                bounced = true;
+            }
+            if self.y >= CFG.h {
+                self.y = CFG.h;
+                self.vy = -self.vy.abs();
+                bounced = true;
+            }
+            if bounced {
+                self.bounces -= 1;
+                self.spawn_x = self.x; // 重设摆动中心
+            }
+            return; // 反弹弹丸不因越界销毁
+        }
+
+        // 普通弹丸越界销毁
         if self.x < -20.0 || self.x > CFG.w + 20.0 || self.y < -20.0 || self.y > CFG.h + 20.0 {
             self.dead = true;
         }
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&self, ox: f32, oy: f32) {
         let c = if self.from_player {
             if self.is_crit {
-                Color::from_rgba(255, 230, 90, 255) // 暴击：金黄
+                Color::from_rgba(255, 230, 90, 255)
+            } else if matches!(self.source, HitSource::Wave) {
+                Color::from_rgba(120, 255, 200, 255) // Wave: 青绿
+            } else if matches!(self.source, HitSource::Reflector) {
+                Color::from_rgba(255, 255, 255, 255) // Reflector: 亮白
             } else if self.homing {
                 Color::from_rgba(255, 200, 120, 255)
             } else {
@@ -93,8 +155,10 @@ impl Bullet {
         } else {
             self.h * 0.55
         };
-        draw_circle(self.x, self.y, glow_r, g);
+        let sx = self.x + ox;
+        let sy = self.y + oy;
+        draw_circle(sx, sy, glow_r, g);
         let w = if self.is_crit { self.w * 1.4 } else { self.w };
-        draw_rectangle(self.x - w * 0.5, self.y - self.h * 0.5, w, self.h, c);
+        draw_rectangle(sx - w * 0.5, sy - self.h * 0.5, w, self.h, c);
     }
 }

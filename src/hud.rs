@@ -1043,6 +1043,9 @@ fn pretty_id(id: &str) -> &'static str {
         "drone" => "Drone",
         "laser" => "Laser",
         "chain" => "Chain",
+        "rift" => "Rift",
+        "wave" => "Wave",
+        "reflector" => "Reflector",
         _ => "?",
     }
 }
@@ -1298,18 +1301,58 @@ pub fn draw_chapter_intro(world: &World, font: Option<&Font>, lang: Lang) {
     );
 }
 
-pub fn draw_world(world: &World, t: f32) {
+/// 屏幕边缘绘制敌人方向指示器（对屏幕外的敌人显示小三角）
+pub fn draw_off_screen_indicators(world: &World) {
+    let m = 24.0; // 边距
+    for e in &world.enemies {
+        if e.dead {
+            continue;
+        }
+        // 敌人在屏幕内则跳过
+        if e.x > m && e.x < CFG.w - m && e.y > m && e.y < CFG.h - m {
+            continue;
+        }
+        // 计算最近屏幕边缘交点
+        let cx = e.x.clamp(m, CFG.w - m);
+        let cy = e.y.clamp(m, CFG.h - m);
+        // 指向敌人的方向角
+        let angle = (e.y - cy).atan2(e.x - cx);
+        // 小三角颜色：Kamikaze 更显眼
+        let color = if matches!(e.kind, EnemyKind::Kamikaze) {
+            Color::from_rgba(255, 70, 90, 255)
+        } else {
+            Color::from_rgba(255, 136, 102, 180)
+        };
+        let s = 6.0;
+        draw_triangle(
+            vec2(cx + angle.cos() * s, cy + angle.sin() * s),
+            vec2(
+                cx + (angle + 2.6).cos() * s,
+                cy + (angle + 2.6).sin() * s,
+            ),
+            vec2(
+                cx + (angle - 2.6).cos() * s,
+                cy + (angle - 2.6).sin() * s,
+            ),
+            color,
+        );
+    }
+}
+
+pub fn draw_world(world: &World, t: f32, ox: f32, oy: f32) {
     for g in &world.pickups {
-        g.draw(t);
+        g.draw(t, ox, oy);
     }
     for b in &world.bullets {
-        b.draw();
+        b.draw(ox, oy);
     }
     for e in &world.enemies {
-        e.draw();
+        e.draw(ox, oy);
     }
     if !world.player.dead {
-        world.weapons.draw(&world.player, t);
-        world.player.draw(t);
+        world.weapons.draw(&world.player, t, ox, oy);
+        world.player.draw(t, ox, oy);
     }
+    // 屏幕外敌人指示器
+    draw_off_screen_indicators(world);
 }

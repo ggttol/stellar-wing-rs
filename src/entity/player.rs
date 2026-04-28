@@ -6,7 +6,6 @@ use crate::config::CFG;
 use crate::fx::{Fx, Particle};
 use crate::ship::ShipType;
 
-#[allow(dead_code)] // damage_mul/invincible 在 M3 接入
 pub struct PlayerStats {
     pub speed: f32,        // 像素/秒²的加速度（与 friction 配合）
     pub friction: f32,     // 0..1，每帧速度衰减系数（按 dt 归一化处理）
@@ -29,8 +28,13 @@ pub struct CombatPerks {
     pub heat_lock: bool,
     pub static_mark: bool,
     pub drone_relay: bool,
+    pub gravity_well: bool,
+    pub resonance: bool,
+    pub prism: bool,
     /// Hull Plating 升级卡已选取次数（上限 2）。
     pub hull_plating_picks: u8,
+    /// 升级卡保底计数：连续未出副武器解锁卡次数，≥5 时强制出。
+    pub pity_unlock: u8,
 }
 
 impl Default for PlayerStats {
@@ -54,7 +58,6 @@ impl Default for PlayerStats {
     }
 }
 
-#[allow(dead_code)] // dead 字段在 M3 接入死亡判定
 pub struct Player {
     pub x: f32,
     pub y: f32,
@@ -200,14 +203,14 @@ impl Player {
         true
     }
 
-    pub fn draw(&self, t: f32) {
+    pub fn draw(&self, t: f32, ox: f32, oy: f32) {
         // 受击闪烁
         if t < self.invincible_until && ((t * 20.0) as i32) % 2 == 0 {
             return;
         }
 
-        let cx = self.x;
-        let cy = self.y;
+        let cx = self.x + ox;
+        let cy = self.y + oy;
         let w = self.w;
         let h = self.h;
 

@@ -48,7 +48,7 @@ impl ShipType {
             }
             ShipType::Engineer => {
                 player.stats.fire_rate *= 1.08;
-                player.stats.damage_mul *= 0.92;
+                player.stats.damage_mul *= 0.96; // 仅 -4% 伤害，副武器收益可抵消
                 if !weapons.has("drone") {
                     weapons.subs.push(Box::new(Drone::new()));
                 } else if !weapons.has("missile") {

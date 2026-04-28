@@ -62,6 +62,8 @@ pub struct World {
     pub overload_flash: f32,
     /// 无尽模式伤害加成：每圈 +4%（用于抵消 Boss HP 指数增长）
     pub endless_damage_bonus: f32,
+    /// 低血量警告脉冲计数，配合 run_time 做周期性 beep
+    pub last_hp_warn_beat: u32,
 }
 
 impl World {
@@ -97,6 +99,7 @@ impl World {
             synergy: SynergyGauge::new(),
             overload_flash: 0.0,
             endless_damage_bonus: 0.0,
+            last_hp_warn_beat: 0,
         }
     }
 

@@ -3,12 +3,18 @@ pub mod drone;
 pub mod laser;
 pub mod main_gun;
 pub mod missile;
+pub mod reflector;
+pub mod rift;
+pub mod wave;
 
 pub use chain::Chain;
 pub use drone::Drone;
 pub use laser::Laser;
 pub use main_gun::MainGun;
 pub use missile::Missile;
+pub use reflector::Reflector;
+pub use rift::VoidRift;
+pub use wave::WaveCannon;
 
 use crate::entity::{Bullet, Enemy, Player};
 use crate::fx::Fx;
@@ -103,7 +109,7 @@ pub trait SubWeapon {
         bullets: &mut Vec<Bullet>,
         fx: &mut Fx,
     );
-    fn draw(&self, player: &Player, t: f32);
+    fn draw(&self, player: &Player, t: f32, ox: f32, oy: f32);
 }
 
 pub struct WeaponSlot {
@@ -135,9 +141,9 @@ impl WeaponSlot {
         fired_main
     }
 
-    pub fn draw(&self, player: &Player, t: f32) {
+    pub fn draw(&self, player: &Player, t: f32, ox: f32, oy: f32) {
         for s in &self.subs {
-            s.draw(player, t);
+            s.draw(player, t, ox, oy);
         }
     }
 

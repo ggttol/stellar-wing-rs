@@ -29,7 +29,7 @@ impl Chain {
         140.0 + self.level as f32 * 10.0
     }
     fn damage_mul(&self) -> f32 {
-        1.15 + self.level as f32 * 0.22
+        1.45 + self.level as f32 * 0.28
     }
 }
 
@@ -89,6 +89,13 @@ impl SubWeapon for Chain {
             e.hp -= dmg;
             e.hit_flash = 0.08;
             e.last_hit = crate::entity::HitSource::Chain;
+            // Resonance: Wave 标记触发 +2 额外跳（不消耗主跳数）
+            let extra_jumps = if player.perks.resonance && e.wave_marked {
+                e.wave_marked = false;
+                2
+            } else {
+                0
+            };
             if player.perks.static_mark {
                 e.static_mark = true;
             }
@@ -96,8 +103,37 @@ impl SubWeapon for Chain {
             fx.burst(e.x, e.y, 3, 2.0, color, 100.0);
             from = (e.x, e.y);
             hit.push(idx);
+
+            // Resonance 额外跳
+            for _ in 0..extra_jumps {
+                let mut best2: Option<usize> = None;
+                let mut best_d2 = range * range;
+                for (j, ej) in enemies.iter().enumerate() {
+                    if ej.dead || hit.contains(&j) {
+                        continue;
+                    }
+                    let dx2 = ej.x - from.0;
+                    let dy2 = ej.y - from.1;
+                    let d2 = dx2 * dx2 + dy2 * dy2;
+                    if d2 < best_d2 {
+                        best_d2 = d2;
+                        best2 = Some(j);
+                    }
+                }
+                if let Some(jdx) = best2 {
+                    let (bdmg, _) = roll_crit(player, self.damage_mul());
+                    let ej = &mut enemies[jdx];
+                    ej.hp -= bdmg;
+                    ej.hit_flash = 0.08;
+                    ej.last_hit = crate::entity::HitSource::Chain;
+                    fx.bolt(from.0, from.1, ej.x, ej.y, Color::from_rgba(120, 255, 200, 255));
+                    fx.burst(ej.x, ej.y, 2, 1.5, Color::from_rgba(120, 255, 200, 255), 80.0);
+                    from = (ej.x, ej.y);
+                    hit.push(jdx);
+                }
+            }
         }
     }
 
-    fn draw(&self, _player: &Player, _t: f32) {}
+    fn draw(&self, _player: &Player, _t: f32, _ox: f32, _oy: f32) {}
 }

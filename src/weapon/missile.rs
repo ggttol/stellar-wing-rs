@@ -64,7 +64,7 @@ impl SubWeapon for Missile {
             // 初始向上 + 轻微外扩
             let vx = if n > 1 { off * 4.0 } else { 0.0 };
             let mut b = Bullet::player_shot(player.x + off, player.y - player.h * 0.5, vx, -260.0);
-            let (dmg, crit) = roll_crit(player, 1.15);
+            let (dmg, crit) = roll_crit(player, 1.50);
             b.damage = dmg;
             b.is_crit = crit;
             b.homing = true;
@@ -75,5 +75,5 @@ impl SubWeapon for Missile {
         }
     }
 
-    fn draw(&self, _player: &Player, _t: f32) {}
+    fn draw(&self, _player: &Player, _t: f32, _ox: f32, _oy: f32) {}
 }

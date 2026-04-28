@@ -98,7 +98,9 @@ impl Pickup {
         false
     }
 
-    pub fn draw(&self, t: f32) {
+    pub fn draw(&self, t: f32, ox: f32, oy: f32) {
+        let x = self.x + ox;
+        let y = self.y + oy;
         let c = match self.kind {
             PickupKind::Xp => match self.value {
                 0..=2 => Color::from_rgba(125, 249, 255, 255),
@@ -113,58 +115,58 @@ impl Pickup {
         let mut g = c;
         g.a = 0.35;
         let pulse = 1.0 + (t * 6.0 + self.spin).sin() * 0.15;
-        draw_circle(self.x, self.y, 8.0 * pulse, g);
+        draw_circle(x, y, 8.0 * pulse, g);
         match self.kind {
             PickupKind::Xp => {
                 let s = 5.0;
                 draw_triangle(
-                    vec2(self.x, self.y - s),
+                    vec2(x, self.y - s),
                     vec2(self.x + s, self.y),
                     vec2(self.x - s, self.y),
                     c,
                 );
                 draw_triangle(
-                    vec2(self.x, self.y + s),
+                    vec2(x, self.y + s),
                     vec2(self.x + s, self.y),
                     vec2(self.x - s, self.y),
                     c,
                 );
             }
             PickupKind::Heal => {
-                draw_rectangle(self.x - 2.0, self.y - 6.0, 4.0, 12.0, c);
-                draw_rectangle(self.x - 6.0, self.y - 2.0, 12.0, 4.0, c);
+                draw_rectangle(x - 2.0, y - 6.0, 4.0, 12.0, c);
+                draw_rectangle(x - 6.0, y - 2.0, 12.0, 4.0, c);
             }
             PickupKind::Magnet => {
-                draw_circle_lines(self.x, self.y, 6.0, 2.0, c);
+                draw_circle_lines(x, y, 6.0, 2.0, c);
                 draw_line(
-                    self.x - 5.0,
-                    self.y - 6.0,
-                    self.x - 1.0,
-                    self.y + 2.0,
+                    x - 5.0,
+                    y - 6.0,
+                    x - 1.0,
+                    y + 2.0,
                     2.0,
                     c,
                 );
                 draw_line(
-                    self.x + 5.0,
-                    self.y - 6.0,
-                    self.x + 1.0,
-                    self.y + 2.0,
+                    x + 5.0,
+                    y - 6.0,
+                    x + 1.0,
+                    y + 2.0,
                     2.0,
                     c,
                 );
             }
             PickupKind::Ammo => {
-                draw_circle(self.x, self.y, 5.0, c);
+                draw_circle(x, y, 5.0, c);
                 draw_triangle(
-                    vec2(self.x, self.y - 8.0),
+                    vec2(x, self.y - 8.0),
                     vec2(self.x + 4.0, self.y - 1.0),
                     vec2(self.x - 4.0, self.y - 1.0),
                     c,
                 );
             }
             PickupKind::Barrier => {
-                draw_circle_lines(self.x, self.y, 7.0, 2.0, c);
-                draw_circle(self.x, self.y, 3.0, WHITE);
+                draw_circle_lines(x, y, 7.0, 2.0, c);
+                draw_circle(x, y, 3.0, WHITE);
             }
         }
     }

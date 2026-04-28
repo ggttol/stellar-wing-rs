@@ -129,7 +129,6 @@ pub struct EnemyStats {
     pub color: Color,
 }
 
-#[allow(dead_code)] // vx 给 M7 用
 pub struct Enemy {
     pub kind: EnemyKind,
     pub x: f32,
@@ -156,6 +155,8 @@ pub struct Enemy {
     pub telegraph_kind: TelegraphKind,
     pub marked_until: f32,
     pub static_mark: bool,
+    /// Resonance：被 Wave Cannon 弹丸击中过
+    pub wave_marked: bool,
     pub boss_mod: Option<BossMod>,
     pub boss_phase: u8,
     pub pending_boss_attack: TelegraphKind,
@@ -165,6 +166,10 @@ pub struct Enemy {
     pub phantom_blink_in: f32,
     /// Hydra：50% HP 触发的"分裂"是否已经放过
     pub hydra_split: bool,
+    /// Kamikaze 飞出屏幕被成功躲避
+    pub dodged: bool,
+    /// Boss 刚发射攻击，触发屏幕震动
+    pub should_shake: bool,
     pub last_hit: HitSource,
     /// 本敌人发射的子弹伤害，由 spawn 端根据 run_time 设置。
     pub bullet_damage: f32,
@@ -206,12 +211,15 @@ impl Enemy {
             telegraph_kind: TelegraphKind::None,
             marked_until: 0.0,
             static_mark: false,
+            wave_marked: false,
             boss_mod: None,
             boss_phase: 0,
             pending_boss_attack: TelegraphKind::None,
             phantom_invuln: 0.0,
             phantom_blink_in: 6.0,
             hydra_split: false,
+            dodged: false,
+            should_shake: false,
             last_hit: HitSource::Enemy,
             bullet_damage: 1.0,
             dead: false,
@@ -300,6 +308,7 @@ impl Enemy {
                     || self.x < -60.0
                     || self.x > CFG.w + 60.0
                 {
+                    self.dodged = true;
                     self.dead = true;
                 }
             }
@@ -637,6 +646,7 @@ impl Enemy {
             }
             _ => {}
         }
+        self.should_shake = true;
     }
 
     pub fn boss_mod_label(&self) -> Option<&'static str> {
@@ -651,7 +661,7 @@ impl Enemy {
         }
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&self, ox: f32, oy: f32) {
         let phantom_fade = if matches!(self.boss_mod, Some(BossMod::Phantom))
             && self.phantom_invuln > 0.0
         {
@@ -660,6 +670,8 @@ impl Enemy {
             0.0
         };
         let alpha = 1.0 - phantom_fade * 0.75;
+        let x = self.x + ox;
+        let y = self.y + oy;
         let mut c = if self.hit_flash > 0.0 {
             WHITE
         } else {
@@ -668,18 +680,18 @@ impl Enemy {
         c.a = alpha;
         let mut g = c;
         g.a = if self.is_elite { 0.38 } else { 0.25 } * alpha;
-        draw_circle(self.x, self.y, self.radius * 1.4, g);
+        draw_circle(x, y, self.radius * 1.4, g);
         if self.is_elite {
             let mut ring = c;
             ring.a = 0.8;
-            draw_circle_lines(self.x, self.y, self.radius + 6.0, 2.0, ring);
+            draw_circle_lines(x, y, self.radius + 6.0, 2.0, ring);
             if self.telegraph > 0.0 && self.telegraph_kind == TelegraphKind::EliteDash {
-                let tx = self.x + self.dash_charge.signum() * 40.0;
+                let tx = x + self.dash_charge.signum() * 40.0;
                 draw_line(
-                    self.x,
-                    self.y,
+                    x,
+                    y,
                     tx,
-                    self.y,
+                    y,
                     3.0,
                     Color::from_rgba(255, 90, 110, 220),
                 );
@@ -687,14 +699,14 @@ impl Enemy {
         }
         if matches!(self.kind, EnemyKind::Boss) && self.telegraph > 0.0 {
             let warn = Color::from_rgba(255, 90, 110, 220);
-            let muzzle_y = self.y + self.h * 0.45;
+            let muzzle_y = y + self.h * 0.45;
             match self.telegraph_kind {
                 TelegraphKind::BossAim => {
                     for off in [-22.0_f32, 22.0_f32] {
                         draw_line(
-                            self.x + off,
+                            x + off,
                             muzzle_y,
-                            self.x + off,
+                            x + off,
                             CFG.h - 110.0,
                             2.0,
                             warn,
@@ -704,9 +716,9 @@ impl Enemy {
                 TelegraphKind::BossFan => {
                     for ang in [-0.4_f32, -0.2, 0.0, 0.2, 0.4] {
                         draw_line(
-                            self.x,
+                            x,
                             muzzle_y,
-                            self.x + ang.sin() * 180.0,
+                            x + ang.sin() * 180.0,
                             muzzle_y + ang.cos() * 180.0,
                             2.0,
                             warn,
@@ -714,7 +726,7 @@ impl Enemy {
                     }
                 }
                 TelegraphKind::BossNova => {
-                    draw_circle_lines(self.x, self.y, self.radius + 18.0, 3.0, warn);
+                    draw_circle_lines(x, y, self.radius + 18.0, 3.0, warn);
                 }
                 _ => {}
             }
@@ -722,8 +734,8 @@ impl Enemy {
 
         draw_enemy_ship(
             self.kind,
-            self.x,
-            self.y,
+            x,
+            y,
             self.w,
             self.h,
             c,

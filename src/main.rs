@@ -156,7 +156,7 @@ async fn main() {
                         world.xp -= world.xp_to_next;
                         world.level += 1;
                         world.xp_to_next = 6 + world.level * 4;
-                        let cards = upgrade::draw_n(3, &world.player, &world.weapons);
+                        let cards = upgrade::draw_n(3, &mut world.player, &world.weapons);
                         card_cursor = 0;
                         audio_inst.play_levelup();
                         scene = Scene::UpgradePick(cards);
@@ -241,12 +241,20 @@ async fn main() {
                 }
                 fx.update(dt);
             }
-            _ => {
-                fx.update(dt);
-            }
         }
 
         clear_background(Color::from_rgba(2, 3, 10, 255));
+        // 屏幕震动偏移（Boss 攻击 / 大爆炸触发）
+        let (sx, sy) = if fx.shake > 0.0 {
+            use ::rand::{thread_rng, Rng};
+            let mut rng = thread_rng();
+            (
+                rng.gen_range(-fx.shake..fx.shake),
+                rng.gen_range(-fx.shake * 0.7..fx.shake * 0.7),
+            )
+        } else {
+            (0.0, 0.0)
+        };
         match &scene {
             Scene::Playing | Scene::Paused | Scene::UpgradePick(_) | Scene::GameOver => {
                 let chap = chapter::get(world.chapter_idx);
@@ -268,25 +276,25 @@ async fn main() {
                 hud::draw_talents(&save_data, *cursor, t_acc, font, lang);
             }
             Scene::Playing => {
-                hud::draw_world(&world, t_acc);
+                hud::draw_world(&world, t_acc, sx, sy);
                 fx.draw();
                 hud::draw_play_hud(&world, save_data.high, font, lang);
                 hud::draw_chapter_intro(&world, font, lang);
             }
             Scene::Paused => {
-                hud::draw_world(&world, t_acc);
+                hud::draw_world(&world, t_acc, sx, sy);
                 fx.draw();
                 hud::draw_play_hud(&world, save_data.high, font, lang);
                 hud::draw_pause(font, lang);
             }
             Scene::UpgradePick(cards) => {
-                hud::draw_world(&world, t_acc);
+                hud::draw_world(&world, t_acc, sx, sy);
                 fx.draw();
                 hud::draw_play_hud(&world, save_data.high, font, lang);
                 hud::draw_upgrade_pick(cards, t_acc, card_cursor, font, lang);
             }
             Scene::GameOver => {
-                hud::draw_world(&world, t_acc);
+                hud::draw_world(&world, t_acc, sx, sy);
                 fx.draw();
                 hud::draw_play_hud(&world, save_data.high, font, lang);
                 hud::draw_gameover(
@@ -298,7 +306,6 @@ async fn main() {
                     lang,
                 );
             }
-            _ => {}
         }
 
         next_frame().await;
@@ -430,6 +437,11 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
             speed_mul
         };
         e.update(dt * scale, t, world.player.x, &mut world.bullets);
+        // Boss 攻击屏幕震动
+        if e.should_shake {
+            fx.shake = fx.shake.max(10.0);
+            e.should_shake = false;
+        }
     }
     combat::steer_homing_bullets(world, dt);
     for b in &mut world.bullets {
@@ -471,6 +483,30 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
 
     combat::resolve_enemy_bullets(world, audio, t);
     combat::resolve_enemy_player_contact(world, audio, t);
+
+    // 低血量警告（每 1.2 秒一声短促 beep）
+    if world.player.lives == 1 && !world.player.dead {
+        let beat = (world.run_time / 1.2) as u32;
+        if beat != world.last_hp_warn_beat {
+            world.last_hp_warn_beat = beat;
+            audio.play_hurt(); // 复用受击音效作为警告
+        }
+    }
+
+    // 成功躲避 Kamikaze 的反馈
+    for e in &world.enemies {
+        if e.dodged {
+            let reward = e.score / 4;
+            world.score += reward;
+            fx.float_text(
+                e.x.clamp(30.0, CFG.w - 30.0),
+                e.y.clamp(30.0, CFG.h - 30.0),
+                format!("DODGED! +{}", reward),
+                Color::from_rgba(125, 249, 255, 255),
+                13.0,
+            );
+        }
+    }
 
     world.bullets.retain(|b| !b.dead);
     world.enemies.retain(|e| !e.dead);
