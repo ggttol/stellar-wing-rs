@@ -240,7 +240,14 @@ fn draw_leaderboard(x: f32, y: f32, w: f32, save: &Save, font: Option<&Font>, la
             2 => MAGENTA,
             _ => MUTED,
         };
-        dt(&format!("{}", i + 1), x + 12.0, row_y, 12.0, rank_color, font);
+        dt(
+            &format!("{}", i + 1),
+            x + 12.0,
+            row_y,
+            12.0,
+            rank_color,
+            font,
+        );
         let score = format!("{:>6}", r.score);
         dt(&score, x + 30.0, row_y, 12.0, SOFT_WHITE, font);
         let lv = format!("{}{:<2}", t("LV", lang), r.level);
@@ -406,7 +413,14 @@ fn draw_launch_prompt(cx: f32, y: f32, t_acc: f32, font: Option<&Font>, lang: La
         alpha(NEON_CYAN, pulse),
         font,
     );
-    dt(prompt, lx, y, size, alpha(ICE_CYAN, 0.85 + pulse * 0.15), font);
+    dt(
+        prompt,
+        lx,
+        y,
+        size,
+        alpha(ICE_CYAN, 0.85 + pulse * 0.15),
+        font,
+    );
 }
 
 /// 底部一行键提示。
@@ -456,14 +470,7 @@ pub fn draw_menu(
     // Stardust 余额（菜单角标）
     let star_text = format!("✦ {}", save.stardust);
     let ds = mt(&star_text, 12, font);
-    dt(
-        &star_text,
-        cx - ds.width * 0.5,
-        158.0,
-        12.0,
-        ICE_CYAN,
-        font,
-    );
+    dt(&star_text, cx - ds.width * 0.5, 158.0, 12.0, ICE_CYAN, font);
 
     if !save.leaderboard.is_empty() {
         draw_leaderboard(20.0, 168.0, CFG.w - 40.0, save, font, lang);
@@ -821,23 +828,9 @@ pub fn draw_gameover(
             font,
         );
         let stardust_label = format!("✦ +{}", r.stardust_gained);
-        dt(
-            &stardust_label,
-            36.0,
-            panel_y + 28.0,
-            22.0,
-            GOLD,
-            font,
-        );
+        dt(&stardust_label, 36.0, panel_y + 28.0, 22.0, GOLD, font);
         let stardust_caption = t("Stardust earned", lang);
-        dt(
-            stardust_caption,
-            36.0,
-            panel_y + 46.0,
-            11.0,
-            MUTED,
-            font,
-        );
+        dt(stardust_caption, 36.0, panel_y + 46.0, 11.0, MUTED, font);
 
         let total_label = format!("{}: {}", t("Total", lang), save.stardust);
         let dt_total = mt(&total_label, 12, font);
@@ -849,11 +842,7 @@ pub fn draw_gameover(
             ICE_CYAN,
             font,
         );
-        let lifetime = format!(
-            "{}: {}",
-            t("Lifetime", lang),
-            r.lifetime_after
-        );
+        let lifetime = format!("{}: {}", t("Lifetime", lang), r.lifetime_after);
         let dt_life = mt(&lifetime, 11, font);
         dt(
             &lifetime,
@@ -1062,26 +1051,13 @@ fn draw_heart(x: f32, y: f32, s: f32, c: Color) {
 }
 
 /// 永久天赋购买页。
-pub fn draw_talents(
-    save: &Save,
-    cursor: usize,
-    t_acc: f32,
-    font: Option<&Font>,
-    lang: Lang,
-) {
+pub fn draw_talents(save: &Save, cursor: usize, t_acc: f32, font: Option<&Font>, lang: Lang) {
     let cx = CFG.w * 0.5;
 
     // 标题
     let title = t("TALENTS", lang);
     let dim = mt(title, 36, font);
-    dt(
-        title,
-        cx - dim.width * 0.5,
-        70.0,
-        36.0,
-        ICE_CYAN,
-        font,
-    );
+    dt(title, cx - dim.width * 0.5, 70.0, 36.0, ICE_CYAN, font);
     let sub = t("Spend stardust to gain permanent power", lang);
     let ds = mt(sub, 12, font);
     dt(sub, cx - ds.width * 0.5, 92.0, 12.0, MUTED, font);
@@ -1131,9 +1107,17 @@ pub fn draw_talents(
         }
 
         // 名称 + 描述
-        let name = if lang == Lang::Zh { def.name_zh } else { def.name_en };
+        let name = if lang == Lang::Zh {
+            def.name_zh
+        } else {
+            def.name_en
+        };
         dt(name, list_x + 14.0, y + 18.0, 14.0, ICE_CYAN, font);
-        let desc = if lang == Lang::Zh { def.desc_zh } else { def.desc_en };
+        let desc = if lang == Lang::Zh {
+            def.desc_zh
+        } else {
+            def.desc_en
+        };
         dt(desc, list_x + 14.0, y + 36.0, 11.0, MUTED, font);
 
         // 等级 pip 条
@@ -1180,14 +1164,7 @@ pub fn draw_talents(
     // 底部提示
     let hint = t("↑↓ select   ENTER buy   ESC back", lang);
     let dh = mt(hint, 12, font);
-    dt(
-        hint,
-        cx - dh.width * 0.5,
-        CFG.h - 28.0,
-        12.0,
-        MUTED,
-        font,
-    );
+    dt(hint, cx - dh.width * 0.5, CFG.h - 28.0, 12.0, MUTED, font);
 }
 
 /// 共鸣槽 / 过载状态条（顶部中央，时间 ↓ 下方）。
@@ -1228,7 +1205,14 @@ fn draw_resonance(world: &World, font: Option<&Font>, lang: Lang) {
     } else {
         Color::from_rgba(180, 200, 220, 255)
     };
-    dt(&label, cx - dl.width * 0.5, by + bar_h + 12.0, 11.0, label_color, font);
+    dt(
+        &label,
+        cx - dl.width * 0.5,
+        by + bar_h + 12.0,
+        11.0,
+        label_color,
+        font,
+    );
 
     // 触发瞬间的全屏淡金色冲击波（进入过载）
     if world.overload_flash > 0.0 {
@@ -1265,15 +1249,17 @@ pub fn draw_chapter_intro(world: &World, font: Option<&Font>, lang: Lang) {
     let label = if chap.endless {
         format!("◆ {} ◆", t("ENDLESS", lang))
     } else {
-        format!(
-            "{} {} / {}",
-            t("CHAPTER", lang),
-            chap.id,
-            chapter::total()
-        )
+        format!("{} {} / {}", t("CHAPTER", lang), chap.id, chapter::total())
     };
     let dl = mt(&label, 12, font);
-    dt(&label, cx - dl.width * 0.5, y - 18.0, 12.0, alpha(GOLD, a), font);
+    dt(
+        &label,
+        cx - dl.width * 0.5,
+        y - 18.0,
+        12.0,
+        alpha(GOLD, a),
+        font,
+    );
 
     // 章节名
     let name = if lang == Lang::Zh {
@@ -1282,7 +1268,14 @@ pub fn draw_chapter_intro(world: &World, font: Option<&Font>, lang: Lang) {
         chap.name_en
     };
     let dn = mt(name, 26, font);
-    dt(name, cx - dn.width * 0.5, y + 10.0, 26.0, alpha(ICE_CYAN, a), font);
+    dt(
+        name,
+        cx - dn.width * 0.5,
+        y + 10.0,
+        26.0,
+        alpha(ICE_CYAN, a),
+        font,
+    );
 
     // 副标题
     let tag = if lang == Lang::Zh {
@@ -1326,14 +1319,8 @@ pub fn draw_off_screen_indicators(world: &World) {
         let s = 6.0;
         draw_triangle(
             vec2(cx + angle.cos() * s, cy + angle.sin() * s),
-            vec2(
-                cx + (angle + 2.6).cos() * s,
-                cy + (angle + 2.6).sin() * s,
-            ),
-            vec2(
-                cx + (angle - 2.6).cos() * s,
-                cy + (angle - 2.6).sin() * s,
-            ),
+            vec2(cx + (angle + 2.6).cos() * s, cy + (angle + 2.6).sin() * s),
+            vec2(cx + (angle - 2.6).cos() * s, cy + (angle - 2.6).sin() * s),
             color,
         );
     }

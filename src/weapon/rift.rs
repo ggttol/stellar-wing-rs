@@ -5,7 +5,7 @@ use macroquad::prelude::*;
 
 use crate::entity::{Bullet, Enemy, HitSource, Player};
 use crate::fx::Fx;
-use crate::weapon::SubWeapon;
+use crate::weapon::{roll_crit, SubWeapon};
 
 struct RiftInstance {
     x: f32,
@@ -60,6 +60,10 @@ impl VoidRift {
             _ => 2.2,
         }
     }
+
+    fn base_damage(&self) -> f32 {
+        1.2 + self.level as f32 * 0.28
+    }
 }
 
 impl SubWeapon for VoidRift {
@@ -100,6 +104,7 @@ impl SubWeapon for VoidRift {
 
         let radius = self.radius();
         let interval = self.pulse_interval();
+        let base = self.base_damage();
         let color = Color::from_rgba(160, 100, 255, 255);
         let gravity = player.perks.gravity_well;
 
@@ -128,23 +133,21 @@ impl SubWeapon for VoidRift {
 
             if r.pulse_timer >= interval {
                 r.pulse_timer = 0.0;
-                let dmg = 1.3 + self.level as f32 * 0.5; // 基础脉冲伤害
-                let hit_count = enemies
-                    .iter_mut()
-                    .filter(|e| {
-                        if e.dead {
-                            return false;
-                        }
-                        let dx = r.x - e.x;
-                        let dy = r.y - e.y;
-                        dx * dx + dy * dy < radius * radius
-                    })
-                    .map(|e| {
-                        e.hp -= dmg;
+                let mut hit_count = 0u32;
+                for e in enemies.iter_mut() {
+                    if e.dead {
+                        continue;
+                    }
+                    let dx = r.x - e.x;
+                    let dy = r.y - e.y;
+                    if dx * dx + dy * dy < radius * radius {
+                        let (dmg, _) = roll_crit(player, base);
+                        e.hp -= dmg * e.damage_mul();
                         e.hit_flash = 0.08;
                         e.last_hit = HitSource::Rift;
-                    })
-                    .count();
+                        hit_count += 1;
+                    }
+                }
                 if hit_count > 0 {
                     fx.burst(r.x, r.y, 4, 2.5, color, 60.0);
                 }
@@ -156,7 +159,7 @@ impl SubWeapon for VoidRift {
     fn draw(&self, player: &Player, t: f32, ox: f32, oy: f32) {
         let color = Color::from_rgba(160, 100, 255, 255);
         for r in &self.rifts {
-            let a = (r.life / self.lifetime()).min(1.0).max(0.0);
+            let a = (r.life / self.lifetime()).clamp(0.0, 1.0);
             let x = r.x + ox;
             let y = r.y + oy;
 
@@ -179,7 +182,8 @@ impl SubWeapon for VoidRift {
             // 吸入粒子（Gravity Well 生效时更密）
             let particle_count = if player.perks.gravity_well { 4 } else { 1 };
             for i in 0..particle_count {
-                let angle = t * 3.0 + i as f32 * std::f32::consts::TAU / particle_count as f32
+                let angle = t * 3.0
+                    + i as f32 * std::f32::consts::TAU / particle_count as f32
                     + r.life * 2.0;
                 let dist = self.radius() * 0.6 * (t * 2.0 + i as f32).sin().abs();
                 let px = x + angle.cos() * dist;

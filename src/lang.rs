@@ -72,6 +72,7 @@ pub fn t(s: &str, lang: Lang) -> &str {
         "Common" => "普通",
         "Rare" => "稀有",
         "Epic" => "史诗",
+        "Legendary" => "传奇",
         // 卡片名
         "Rapid Fire" => "急速射击",
         "High Caliber" => "高威力弹",
@@ -149,7 +150,9 @@ pub fn t(s: &str, lang: Lang) -> &str {
         "More shots · bounces · speed" => "更多弹数 · 更多反弹 · 更快射速",
         "Rifts slowly pull enemies inward" => "裂隙缓慢吸入敌人",
         "Wave + Chain: hits trigger extra jumps" => "波动炮 + 闪电链：命中触发额外跳数",
-        "Reflector + Laser: bounce through beam = +50% dmg & pierce" => "反射镜 + 激光：穿过光束 +50% 伤害并穿透",
+        "Reflector + Laser: bounce through beam = +50% dmg & pierce" => {
+            "反射镜 + 激光：穿过光束 +50% 伤害并穿透"
+        }
         "Main Gun Lv2, stronger frontal burst" => "开局主炮 Lv2，正面火力更强",
         "Move speed +18%, tighter evasion" => "移动速度 +18%，闪避更灵活",
         "Starts with a support weapon, weaker gun" => "开局自带副武器，但主炮稍弱",
@@ -167,6 +170,11 @@ pub fn t(s: &str, lang: Lang) -> &str {
         "Language:" => "语言:",
         "Magnet" => "磁吸",
         "COMBO" => "连击",
+        // 拾取浮字
+        "MAGNET" => "磁吸",
+        "SHIELD" => "护盾",
+        "+SUPER" => "+必杀",
+        "DODGED!" => "躲避成功！",
         _ => s,
     }
 }

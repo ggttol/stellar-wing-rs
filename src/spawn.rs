@@ -49,7 +49,13 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
         world.spawn.medium = 0.0;
         let x = rng.gen_range(60.0..(CFG.w - 60.0));
         let mul = endless_extra_mul(world);
-        let mut e = spawn_one(EnemyKind::Medium, x, t, rt, &(world.player.x, world.player.y));
+        let mut e = spawn_one(
+            EnemyKind::Medium,
+            x,
+            t,
+            rt,
+            &(world.player.x, world.player.y),
+        );
         apply_endless_scaling(&mut e, mul);
         world.enemies.push(e);
     }
@@ -57,7 +63,13 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
         world.spawn.large = 0.0;
         let x = rng.gen_range(80.0..(CFG.w - 80.0));
         let mul = endless_extra_mul(world);
-        let mut e = spawn_one(EnemyKind::Large, x, t, rt, &(world.player.x, world.player.y));
+        let mut e = spawn_one(
+            EnemyKind::Large,
+            x,
+            t,
+            rt,
+            &(world.player.x, world.player.y),
+        );
         apply_endless_scaling(&mut e, mul);
         world.enemies.push(e);
     }
@@ -76,13 +88,7 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
 }
 
 /// 给定 kind、原始 x，按当前难度增益生成一只敌人。Kamikaze 会在此处锁定冲撞向量。
-pub fn spawn_one(
-    kind: EnemyKind,
-    x: f32,
-    t: f32,
-    run_time: f32,
-    player_pos: &(f32, f32),
-) -> Enemy {
+pub fn spawn_one(kind: EnemyKind, x: f32, t: f32, run_time: f32, player_pos: &(f32, f32)) -> Enemy {
     let mut e = spawn_enemy(kind, x, t, run_time);
     if matches!(kind, EnemyKind::Kamikaze) {
         // 锁定向玩家位置的方向向量
@@ -258,5 +264,35 @@ pub fn maybe_drop_special(pickups: &mut Vec<Pickup>, e: &Enemy, t: f32) {
             e.y + rng.gen_range(-10.0..10.0),
             kind,
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ship::ShipType;
+
+    #[test]
+    fn endless_extra_multiplier_only_applies_after_story_chapters() {
+        let mut world = World::new(ShipType::Vanguard);
+        assert_eq!(endless_extra_mul(&world), 1.0);
+
+        world.chapter_idx = chapter::CHAPTERS.len() as u32;
+        assert!(endless_extra_mul(&world) > 1.0);
+    }
+
+    #[test]
+    fn endless_scaling_updates_enemy_rewards_and_hp() {
+        let mut enemy = Enemy::new(EnemyKind::Medium, 120.0, 0.0);
+        let hp = enemy.hp;
+        let score = enemy.score;
+        let xp = enemy.xp;
+
+        apply_endless_scaling(&mut enemy, 2.0);
+
+        assert!(enemy.hp > hp);
+        assert_eq!(enemy.max_hp, enemy.hp);
+        assert!(enemy.score > score);
+        assert!(enemy.xp > xp);
     }
 }

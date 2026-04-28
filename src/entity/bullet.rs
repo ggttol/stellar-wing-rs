@@ -37,6 +37,8 @@ pub struct Bullet {
     pub wave_phase: f32,
     // Reflector：反弹
     pub bounces: u8,
+    // Prism：反射弹穿过激光束后的增益只触发一次
+    pub prism_boosted: bool,
 }
 
 impl Bullet {
@@ -60,6 +62,7 @@ impl Bullet {
             wave_freq: 0.0,
             wave_phase: 0.0,
             bounces: 0,
+            prism_boosted: false,
         }
     }
 
@@ -83,6 +86,7 @@ impl Bullet {
             wave_freq: 0.0,
             wave_phase: 0.0,
             bounces: 0,
+            prism_boosted: false,
         }
     }
 
@@ -160,5 +164,38 @@ impl Bullet {
         draw_circle(sx, sy, glow_r, g);
         let w = if self.is_crit { self.w * 1.4 } else { self.w };
         draw_rectangle(sx - w * 0.5, sy - self.h * 0.5, w, self.h, c);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reflector_bounces_then_expires_after_leaving_bounds() {
+        let mut bullet = Bullet::player_shot(1.0, 100.0, -100.0, 0.0);
+        bullet.bounces = 1;
+
+        bullet.update(0.05);
+        assert_eq!(bullet.bounces, 0);
+        assert!(bullet.vx > 0.0);
+        assert!(!bullet.dead);
+
+        bullet.x = -30.0;
+        bullet.update(0.01);
+        assert!(bullet.dead);
+    }
+
+    #[test]
+    fn wave_bullet_tracks_spawn_center_with_sine_offset() {
+        let mut bullet = Bullet::player_shot(120.0, 200.0, 0.0, -100.0);
+        bullet.wave_amp = 40.0;
+        bullet.wave_freq = 2.0;
+
+        bullet.update(0.25);
+
+        assert_eq!(bullet.spawn_x, 120.0);
+        assert_ne!(bullet.x, 120.0);
+        assert!(bullet.y < 200.0);
     }
 }

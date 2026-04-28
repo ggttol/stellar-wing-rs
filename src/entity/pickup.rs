@@ -138,22 +138,8 @@ impl Pickup {
             }
             PickupKind::Magnet => {
                 draw_circle_lines(x, y, 6.0, 2.0, c);
-                draw_line(
-                    x - 5.0,
-                    y - 6.0,
-                    x - 1.0,
-                    y + 2.0,
-                    2.0,
-                    c,
-                );
-                draw_line(
-                    x + 5.0,
-                    y - 6.0,
-                    x + 1.0,
-                    y + 2.0,
-                    2.0,
-                    c,
-                );
+                draw_line(x - 5.0, y - 6.0, x - 1.0, y + 2.0, 2.0, c);
+                draw_line(x + 5.0, y - 6.0, x + 1.0, y + 2.0, 2.0, c);
             }
             PickupKind::Ammo => {
                 draw_circle(x, y, 5.0, c);

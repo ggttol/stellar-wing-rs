@@ -206,3 +206,40 @@ fn epoch_days_to_ymd(mut days: i64) -> (i32, u32, u32) {
     let y = (y + if m <= 2 { 1 } else { 0 }) as i32;
     (y, m, d)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn record_run_updates_progress_and_leaderboard() {
+        let mut save = Save::default();
+
+        let reward = save.record_run(12_500, 8, 2, 3);
+
+        assert_eq!(save.high, 12_500);
+        assert_eq!(save.leaderboard.len(), 1);
+        assert_eq!(save.runs, 1);
+        assert_eq!(save.bosses_killed, 2);
+        assert_eq!(save.furthest_chapter, 3);
+        assert!(save.stardust > 0);
+        assert_eq!(reward.lifetime_before, 0);
+        assert_eq!(reward.lifetime_after, 12_500);
+    }
+
+    #[test]
+    fn old_save_json_missing_new_fields_deserializes_with_defaults() {
+        let json = r#"{"high":42,"leaderboard":[]}"#;
+
+        let save: Save = serde_json::from_str(json).expect("old save should deserialize");
+
+        assert_eq!(save.high, 42);
+        assert_eq!(save.stardust, 0);
+        assert_eq!(save.unlocked_ships, default_ship_mask());
+    }
+
+    #[test]
+    fn epoch_zero_is_unix_epoch_date() {
+        assert_eq!(epoch_days_to_ymd(0), (1970, 1, 1));
+    }
+}

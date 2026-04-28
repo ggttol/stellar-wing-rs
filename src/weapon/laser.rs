@@ -95,7 +95,14 @@ impl SubWeapon for Laser {
             // OFF 期间画一个微弱的瞄准虚线
             let mut c = Color::from_rgba(125, 249, 255, 255);
             c.a = 0.15;
-            draw_line(player.x + ox, player.y - player.h * 0.5 + oy, player.x + ox, oy, 1.0, c);
+            draw_line(
+                player.x + ox,
+                player.y - player.h * 0.5 + oy,
+                player.x + ox,
+                oy,
+                1.0,
+                c,
+            );
             return;
         }
         let half_w = self.width() * 0.5;
@@ -123,7 +130,13 @@ impl SubWeapon for Laser {
         // 中心高亮
         let mut hot = WHITE;
         hot.a = pulse;
-        draw_rectangle(player.x + ox - 1.5, oy, 3.0, player.y + oy - player.h * 0.5, hot);
+        draw_rectangle(
+            player.x + ox - 1.5,
+            oy,
+            3.0,
+            player.y + oy - player.h * 0.5,
+            hot,
+        );
     }
 }
 

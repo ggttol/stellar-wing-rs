@@ -4,8 +4,9 @@ use macroquad::prelude::*;
 
 use crate::audio::Audio;
 use crate::collision::{bullet_hits_enemy, bullet_hits_player, hit_circle};
-use crate::entity::{Bullet, Enemy, EnemyKind, HitSource, Player, PickupKind};
+use crate::entity::{Bullet, Enemy, EnemyKind, HitSource, PickupKind, Player};
 use crate::fx::Fx;
+use crate::lang::{t, Lang};
 use crate::spawn::{drop_xp_gems, maybe_drop_special};
 use crate::world::World;
 
@@ -53,7 +54,13 @@ pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: 
     let crit_mul = world.player.stats.crit_mul;
     let overload_mul = world.synergy.damage_mul();
     // combo 伤害加成：50 连 5%，100 连 10%
-    let combo_dmg = if world.combo >= 100 { 1.10 } else if world.combo >= 50 { 1.05 } else { 1.0 };
+    let combo_dmg = if world.combo >= 100 {
+        1.10
+    } else if world.combo >= 50 {
+        1.05
+    } else {
+        1.0
+    };
     // 副武器递减：≥3 个副武器时所有副武器伤害打折
     let sub_penalty = world.weapons.sub_penalty();
     // 无尽模式每圈伤害加成
@@ -83,11 +90,12 @@ pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: 
                 e.static_mark = false;
             }
             // Prism：Reflector 弹丸穿过激光束时 +50% 伤害 & 穿透 +1
-            if b.source == HitSource::Reflector && world.player.perks.prism {
+            if b.source == HitSource::Reflector && world.player.perks.prism && !b.prism_boosted {
                 let in_beam = (b.x - world.player.x).abs() < 22.0 && b.y < world.player.y;
                 if in_beam {
                     damage *= 1.5;
                     b.pierce = b.pierce.saturating_add(1);
+                    b.prism_boosted = true;
                 }
             }
             e.hp -= damage;
@@ -300,7 +308,7 @@ pub fn trigger_super(world: &mut World, fx: &mut Fx, audio: &Audio) {
 }
 
 /// 拾取处理，返回新增的 XP（已乘倍率）。
-pub fn collect_pickups(world: &mut World, fx: &mut Fx, dt: f32) {
+pub fn collect_pickups(world: &mut World, fx: &mut Fx, dt: f32, lang: Lang) {
     let pr = world.player.stats.pickup_radius;
     let ar = world.player.attract_radius_at(world.run_time);
     let px = world.player.x;
@@ -348,7 +356,7 @@ pub fn collect_pickups(world: &mut World, fx: &mut Fx, dt: f32) {
                 fx.float_text(
                     px,
                     py - 46.0,
-                    "MAGNET",
+                    t("MAGNET", lang),
                     Color::from_rgba(255, 120, 210, 255),
                     14.0,
                 );
@@ -358,7 +366,7 @@ pub fn collect_pickups(world: &mut World, fx: &mut Fx, dt: f32) {
                 fx.float_text(
                     px,
                     py - 46.0,
-                    "+SUPER",
+                    t("+SUPER", lang),
                     Color::from_rgba(255, 180, 80, 255),
                     14.0,
                 );
@@ -368,7 +376,7 @@ pub fn collect_pickups(world: &mut World, fx: &mut Fx, dt: f32) {
                 fx.float_text(
                     px,
                     py - 46.0,
-                    "SHIELD",
+                    t("SHIELD", lang),
                     Color::from_rgba(125, 200, 255, 255),
                     14.0,
                 );

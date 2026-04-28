@@ -19,7 +19,14 @@ pub fn shoot() -> Vec<u8> {
         &mut buf,
         0.0,
         dur,
-        |t| 1800.0 * (1.0 - t / dur).max(0.0).powf(0.6).max(0.0).mul_add(0.66, 0.34),
+        |t| {
+            1800.0
+                * (1.0 - t / dur)
+                    .max(0.0)
+                    .powf(0.6)
+                    .max(0.0)
+                    .mul_add(0.66, 0.34)
+        },
         |p| square(p, 0.35),
         Adsr::pluck(0.06),
         0.55,
@@ -80,15 +87,7 @@ pub fn kill_at(step: u32) -> Vec<u8> {
         },
         0.5,
     );
-    add_note(
-        &mut buf,
-        0.0,
-        dur,
-        f2,
-        sine,
-        Adsr::pluck(dur * 0.6),
-        0.25,
-    );
+    add_note(&mut buf, 0.0, dur, f2, sine, Adsr::pluck(dur * 0.6), 0.25);
     encode_wav(&buf, 0.9)
 }
 

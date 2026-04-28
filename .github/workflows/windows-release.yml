@@ -2,6 +2,13 @@ name: Publish Windows Release Asset
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build, for example v0.1.2. Defaults to Cargo.toml version on the selected ref."
+        required: false
+        type: string
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -13,11 +20,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
 
       - name: Read version
         shell: bash
         run: |
-          VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          elif [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)
+            TAG="v${VERSION}"
+          fi
+          VERSION="${TAG#v}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Set up Rust
@@ -26,7 +44,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Build Windows binary
-        run: cargo build --release --target x86_64-pc-windows-msvc
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc
 
       - name: Package zip
         shell: pwsh
@@ -44,4 +62,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "v${VERSION}" "dist/Stellar.Wing.Windows.x86_64.zip" --clobber
+          gh release upload "$TAG" "dist/Stellar.Wing.Windows.x86_64.zip" --clobber

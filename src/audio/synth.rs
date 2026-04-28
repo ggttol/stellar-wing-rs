@@ -58,9 +58,7 @@ pub struct NoiseRng {
 
 impl NoiseRng {
     pub fn new(seed: u32) -> Self {
-        Self {
-            state: seed.max(1),
-        }
+        Self { state: seed.max(1) }
     }
     /// 返回 [-1, 1]。
     pub fn next(&mut self) -> f32 {

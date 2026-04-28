@@ -283,7 +283,14 @@ impl Enemy {
         self
     }
 
-    pub fn update(&mut self, dt: f32, t: f32, player_x: f32, bullets: &mut Vec<Bullet>) {
+    pub fn update(
+        &mut self,
+        dt: f32,
+        t: f32,
+        player_x: f32,
+        bullets: &mut Vec<Bullet>,
+        spawns: &mut Vec<Enemy>,
+    ) {
         if self.hit_flash > 0.0 {
             self.hit_flash -= dt;
         }
@@ -298,7 +305,7 @@ impl Enemy {
         }
 
         match self.kind {
-            EnemyKind::Boss => self.update_boss(dt, t, player_x, bullets),
+            EnemyKind::Boss => self.update_boss(dt, t, player_x, bullets, spawns),
             EnemyKind::Kamikaze => {
                 // 自爆冲撞：直线冲刺，越界即销毁。vx/vy 由 spawn 阶段锁定。
                 self.x += self.vx * dt;
@@ -321,12 +328,7 @@ impl Enemy {
                 }
                 if self.fire_rate > 0.0 && t - self.last_shot >= self.fire_rate {
                     self.last_shot = t;
-                    bullets.push(self.make_bullet(
-                        self.x,
-                        self.y + self.h * 0.4,
-                        0.0,
-                        300.0,
-                    ));
+                    bullets.push(self.make_bullet(self.x, self.y + self.h * 0.4, 0.0, 300.0));
                 }
             }
             _ => {
@@ -405,12 +407,7 @@ impl Enemy {
             }
             EnemyKind::Large => {
                 let speed = 320.0;
-                bullets.push(self.make_bullet(
-                    self.x,
-                    self.y + self.h * 0.5,
-                    0.0,
-                    speed,
-                ));
+                bullets.push(self.make_bullet(self.x, self.y + self.h * 0.5, 0.0, speed));
                 bullets.push(self.make_bullet(
                     self.x - 15.0,
                     self.y + self.h * 0.5 - 6.0,
@@ -428,7 +425,14 @@ impl Enemy {
         }
     }
 
-    fn update_boss(&mut self, dt: f32, t: f32, player_x: f32, bullets: &mut Vec<Bullet>) {
+    fn update_boss(
+        &mut self,
+        dt: f32,
+        t: f32,
+        player_x: f32,
+        bullets: &mut Vec<Bullet>,
+        spawns: &mut Vec<Enemy>,
+    ) {
         // 入场：从 -h*0.5 飘到 y=140
         let target_y = 140.0;
         if self.y < target_y {
@@ -458,7 +462,7 @@ impl Enemy {
         self.x += (target_x - self.x) * (2.5 * dt).min(1.0);
 
         let ratio = self.hp / self.max_hp;
-        self.advance_boss_phase(ratio, t, bullets);
+        self.advance_boss_phase(ratio, t, bullets, spawns);
 
         let interval = if ratio > 0.66 {
             self.fire_rate
@@ -505,7 +509,13 @@ impl Enemy {
         }
     }
 
-    fn advance_boss_phase(&mut self, ratio: f32, t: f32, bullets: &mut Vec<Bullet>) {
+    fn advance_boss_phase(
+        &mut self,
+        ratio: f32,
+        t: f32,
+        bullets: &mut Vec<Bullet>,
+        spawns: &mut Vec<Enemy>,
+    ) {
         if !matches!(self.kind, EnemyKind::Boss) {
             return;
         }
@@ -528,12 +538,7 @@ impl Enemy {
             }
             // 4 发左右散弹
             for i in [-2.0_f32, -1.0, 1.0, 2.0] {
-                bullets.push(self.make_bullet(
-                    self.x + i * 18.0,
-                    muzzle_y,
-                    i * 60.0,
-                    320.0,
-                ));
+                bullets.push(self.make_bullet(self.x + i * 18.0, muzzle_y, i * 60.0, 320.0));
             }
             self.telegraph = 0.0;
             self.pending_boss_attack = TelegraphKind::None;
@@ -560,9 +565,11 @@ impl Enemy {
                     t,
                 );
                 minion.y = self.y + 24.0;
+                minion.vy = 95.0 + phase as f32 * 18.0;
+                spawns.push(minion);
                 bullets.push(self.make_bullet(
-                    minion.x,
-                    minion.y + 8.0,
+                    (self.x + off).clamp(32.0, CFG.w - 32.0),
+                    self.y + 32.0,
                     0.0,
                     220.0 + phase as f32 * 30.0,
                 ));
@@ -662,13 +669,12 @@ impl Enemy {
     }
 
     pub fn draw(&self, ox: f32, oy: f32) {
-        let phantom_fade = if matches!(self.boss_mod, Some(BossMod::Phantom))
-            && self.phantom_invuln > 0.0
-        {
-            (self.phantom_invuln / 0.45).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
+        let phantom_fade =
+            if matches!(self.boss_mod, Some(BossMod::Phantom)) && self.phantom_invuln > 0.0 {
+                (self.phantom_invuln / 0.45).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
         let alpha = 1.0 - phantom_fade * 0.75;
         let x = self.x + ox;
         let y = self.y + oy;
@@ -687,14 +693,7 @@ impl Enemy {
             draw_circle_lines(x, y, self.radius + 6.0, 2.0, ring);
             if self.telegraph > 0.0 && self.telegraph_kind == TelegraphKind::EliteDash {
                 let tx = x + self.dash_charge.signum() * 40.0;
-                draw_line(
-                    x,
-                    y,
-                    tx,
-                    y,
-                    3.0,
-                    Color::from_rgba(255, 90, 110, 220),
-                );
+                draw_line(x, y, tx, y, 3.0, Color::from_rgba(255, 90, 110, 220));
             }
         }
         if matches!(self.kind, EnemyKind::Boss) && self.telegraph > 0.0 {
@@ -703,14 +702,7 @@ impl Enemy {
             match self.telegraph_kind {
                 TelegraphKind::BossAim => {
                     for off in [-22.0_f32, 22.0_f32] {
-                        draw_line(
-                            x + off,
-                            muzzle_y,
-                            x + off,
-                            CFG.h - 110.0,
-                            2.0,
-                            warn,
-                        );
+                        draw_line(x + off, muzzle_y, x + off, CFG.h - 110.0, 2.0, warn);
                     }
                 }
                 TelegraphKind::BossFan => {

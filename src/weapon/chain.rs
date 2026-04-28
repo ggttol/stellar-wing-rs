@@ -86,7 +86,7 @@ impl SubWeapon for Chain {
             };
             let (dmg, _crit) = roll_crit(player, self.damage_mul());
             let e = &mut enemies[idx];
-            e.hp -= dmg;
+            e.hp -= dmg * e.damage_mul();
             e.hit_flash = 0.08;
             e.last_hit = crate::entity::HitSource::Chain;
             // Resonance: Wave 标记触发 +2 额外跳（不消耗主跳数）
@@ -123,11 +123,24 @@ impl SubWeapon for Chain {
                 if let Some(jdx) = best2 {
                     let (bdmg, _) = roll_crit(player, self.damage_mul());
                     let ej = &mut enemies[jdx];
-                    ej.hp -= bdmg;
+                    ej.hp -= bdmg * ej.damage_mul();
                     ej.hit_flash = 0.08;
                     ej.last_hit = crate::entity::HitSource::Chain;
-                    fx.bolt(from.0, from.1, ej.x, ej.y, Color::from_rgba(120, 255, 200, 255));
-                    fx.burst(ej.x, ej.y, 2, 1.5, Color::from_rgba(120, 255, 200, 255), 80.0);
+                    fx.bolt(
+                        from.0,
+                        from.1,
+                        ej.x,
+                        ej.y,
+                        Color::from_rgba(120, 255, 200, 255),
+                    );
+                    fx.burst(
+                        ej.x,
+                        ej.y,
+                        2,
+                        1.5,
+                        Color::from_rgba(120, 255, 200, 255),
+                        80.0,
+                    );
                     from = (ej.x, ej.y);
                     hit.push(jdx);
                 }

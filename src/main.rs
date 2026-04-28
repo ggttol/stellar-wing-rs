@@ -133,7 +133,7 @@ async fn main() {
                     scene = Scene::Paused;
                     audio_inst.play_pause();
                 } else {
-                    step_play(&mut world, &mut fx, &audio_inst, dt, t_acc);
+                    step_play(&mut world, &mut fx, &audio_inst, dt, t_acc, lang);
                     if world.player.dead {
                         fx.explode(
                             world.player.x,
@@ -297,14 +297,7 @@ async fn main() {
                 hud::draw_world(&world, t_acc, sx, sy);
                 fx.draw();
                 hud::draw_play_hud(&world, save_data.high, font, lang);
-                hud::draw_gameover(
-                    t_acc,
-                    &world,
-                    &save_data,
-                    last_reward.as_ref(),
-                    font,
-                    lang,
-                );
+                hud::draw_gameover(t_acc, &world, &save_data, last_reward.as_ref(), font, lang);
             }
         }
 
@@ -373,7 +366,7 @@ async fn try_load_cjk_font() -> Option<Font> {
 }
 
 /// 主战斗 tick：编排各子系统的执行顺序。
-fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32) {
+fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32, lang: Lang) {
     world.run_time += dt;
 
     // combo 衰减
@@ -430,26 +423,34 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
 
     // 敌人 / 子弹更新
     let speed_mul = world.diff_mul();
+    let mut enemy_spawns = Vec::new();
     for e in &mut world.enemies {
         let scale = if matches!(e.kind, entity::EnemyKind::Boss) {
             1.0
         } else {
             speed_mul
         };
-        e.update(dt * scale, t, world.player.x, &mut world.bullets);
+        e.update(
+            dt * scale,
+            t,
+            world.player.x,
+            &mut world.bullets,
+            &mut enemy_spawns,
+        );
         // Boss 攻击屏幕震动
         if e.should_shake {
             fx.shake = fx.shake.max(10.0);
             e.should_shake = false;
         }
     }
+    world.enemies.extend(enemy_spawns);
     combat::steer_homing_bullets(world, dt);
     for b in &mut world.bullets {
         b.update(dt);
     }
 
     // 拾取
-    combat::collect_pickups(world, fx, dt);
+    combat::collect_pickups(world, fx, dt, lang);
 
     // Super
     if is_key_pressed(KeyCode::Space) && world.super_charge >= 1.0 {
@@ -462,9 +463,10 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
     let boss_died = combat::process_kills(world, fx, audio, t);
     if boss_died {
         // 仅当所有 boss 都被击杀（无尽双 boss）才推进章节。
-        let still_alive = world.enemies.iter().any(|e| {
-            !e.dead && matches!(e.kind, entity::EnemyKind::Boss)
-        });
+        let still_alive = world
+            .enemies
+            .iter()
+            .any(|e| !e.dead && matches!(e.kind, entity::EnemyKind::Boss));
         if !still_alive {
             world.boss_alive = false;
             world.bosses_killed_run += 1;
@@ -501,7 +503,7 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
             fx.float_text(
                 e.x.clamp(30.0, CFG.w - 30.0),
                 e.y.clamp(30.0, CFG.h - 30.0),
-                format!("DODGED! +{}", reward),
+                format!("{} +{}", lang::t("DODGED!", lang), reward),
                 Color::from_rgba(125, 249, 255, 255),
                 13.0,
             );

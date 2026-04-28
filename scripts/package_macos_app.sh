@@ -78,4 +78,21 @@ PLIST
 cp "$BUILD_DIR/$BIN_NAME" "$MACOS_DIR/$BIN_NAME"
 chmod +x "$MACOS_DIR/$BIN_NAME"
 
+if [[ -n "${MACOS_CODESIGN_IDENTITY:-}" ]]; then
+    codesign --force --deep --options runtime --sign "$MACOS_CODESIGN_IDENTITY" "$APP_DIR"
+fi
+
+if [[ -n "${MACOS_NOTARY_APPLE_ID:-}" && -n "${MACOS_NOTARY_TEAM_ID:-}" && -n "${MACOS_NOTARY_PASSWORD:-}" ]]; then
+    ZIP_PATH="$DIST_DIR/$APP_NAME.notary.zip"
+    rm -f "$ZIP_PATH"
+    ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_PATH"
+    xcrun notarytool submit "$ZIP_PATH" \
+        --apple-id "$MACOS_NOTARY_APPLE_ID" \
+        --team-id "$MACOS_NOTARY_TEAM_ID" \
+        --password "$MACOS_NOTARY_PASSWORD" \
+        --wait
+    xcrun stapler staple "$APP_DIR"
+    rm -f "$ZIP_PATH"
+fi
+
 echo "Built app bundle at: $APP_DIR"

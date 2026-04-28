@@ -76,20 +76,11 @@ impl SubWeapon for Reflector {
         for i in 0..n {
             // 扇形发射，角度越大反弹路径越丰富
             let angles: [f32; 3] = [-0.30, 0.0, 0.30];
-            let ang = if n <= 1 {
-                0.0
-            } else {
-                angles[i.min(2)]
-            };
+            let ang = if n <= 1 { 0.0 } else { angles[i.min(2)] };
             let vx = ang.sin() * speed * 1.5;
             let vy = -ang.cos() * speed;
 
-            let mut b = Bullet::player_shot(
-                player.x,
-                player.y - player.h * 0.5,
-                vx,
-                vy,
-            );
+            let mut b = Bullet::player_shot(player.x, player.y - player.h * 0.5, vx, vy);
             let (dmg, crit) = roll_crit(player, 0.85 + self.level as f32 * 0.12);
             b.damage = dmg;
             b.is_crit = crit;
