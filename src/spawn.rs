@@ -37,6 +37,8 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
         let x = rng.gen_range(40.0..(CFG.w - 40.0));
         let kind = if rng.gen::<f32>() < chap.kamikaze_chance {
             EnemyKind::Kamikaze
+        } else if world.run_time >= 18.0 && rng.gen::<f32>() < 0.18 {
+            EnemyKind::Weaver
         } else {
             EnemyKind::Small
         };
@@ -49,13 +51,12 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
         world.spawn.medium = 0.0;
         let x = rng.gen_range(60.0..(CFG.w - 60.0));
         let mul = endless_extra_mul(world);
-        let mut e = spawn_one(
-            EnemyKind::Medium,
-            x,
-            t,
-            rt,
-            &(world.player.x, world.player.y),
-        );
+        let kind = if world.run_time >= 45.0 && rng.gen::<f32>() < 0.22 {
+            EnemyKind::Sniper
+        } else {
+            EnemyKind::Medium
+        };
+        let mut e = spawn_one(kind, x, t, rt, &(world.player.x, world.player.y));
         apply_endless_scaling(&mut e, mul);
         world.enemies.push(e);
     }
@@ -63,13 +64,12 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
         world.spawn.large = 0.0;
         let x = rng.gen_range(80.0..(CFG.w - 80.0));
         let mul = endless_extra_mul(world);
-        let mut e = spawn_one(
-            EnemyKind::Large,
-            x,
-            t,
-            rt,
-            &(world.player.x, world.player.y),
-        );
+        let kind = if world.run_time >= 60.0 && rng.gen::<f32>() < 0.24 {
+            EnemyKind::MineLayer
+        } else {
+            EnemyKind::Large
+        };
+        let mut e = spawn_one(kind, x, t, rt, &(world.player.x, world.player.y));
         apply_endless_scaling(&mut e, mul);
         world.enemies.push(e);
     }
@@ -134,8 +134,11 @@ fn spawn_strafer(t: f32, run_time: f32) -> Enemy {
     e.vx = if from_left { speed } else { -speed };
     e.vy = 0.0;
     let hp_mul = 1.0 + run_time / 55.0;
+    let warmup = (run_time / 120.0).clamp(0.0, 1.0);
     e.hp *= hp_mul;
     e.bullet_damage = 1.0 + run_time / 100.0;
+    e.bullet_speed_mul = 0.58 + warmup * 0.42;
+    e.fire_rate *= 1.25 - warmup * 0.25;
     e.max_hp = e.hp;
     e.score = ((e.score as f32) * (1.0 + run_time / 180.0)) as u32;
     e
@@ -145,8 +148,11 @@ pub fn spawn_enemy(kind: EnemyKind, x: f32, t: f32, run_time: f32) -> Enemy {
     let mut enemy = Enemy::new(kind, x, t);
     let hp_mul = 1.0 + run_time / 55.0; // 无上限持续增长
     let score_mul = 1.0 + run_time / 180.0; // 分数倍率也不再封顶
+    let warmup = (run_time / 120.0).clamp(0.0, 1.0);
     enemy.hp *= hp_mul;
     enemy.bullet_damage = 1.0 + run_time / 100.0; // 敌方子弹伤害随时间增长
+    enemy.bullet_speed_mul = 0.58 + warmup * 0.42;
+    enemy.fire_rate *= 1.35 - warmup * 0.35;
     enemy.max_hp = enemy.hp;
     enemy.score = ((enemy.score as f32) * score_mul) as u32;
     enemy.xp = ((enemy.xp as f32) * (1.0 + run_time / 220.0)).ceil() as u32;
@@ -162,6 +168,7 @@ pub fn spawn_enemy(kind: EnemyKind, x: f32, t: f32, run_time: f32) -> Enemy {
             EnemyKind::Boss => 0.0,
             // Kamikaze / Strafer 已经是"特殊敌人"，不再叠加 elite。
             EnemyKind::Kamikaze | EnemyKind::Strafer => 0.0,
+            EnemyKind::Sniper | EnemyKind::Weaver | EnemyKind::MineLayer => 0.10,
         };
         if rng.gen::<f32>() < elite_chance {
             let roll = rng.gen_range(0..3);
@@ -222,6 +229,9 @@ pub fn drop_xp_gems(pickups: &mut Vec<Pickup>, e: &Enemy) {
         EnemyKind::Boss => 16,
         EnemyKind::Kamikaze => 1,
         EnemyKind::Strafer => 2,
+        EnemyKind::Sniper => 2,
+        EnemyKind::Weaver => 2,
+        EnemyKind::MineLayer => 3,
     };
     let per = (e.xp / pieces.max(1)).max(1);
     let mut rng = thread_rng();
@@ -239,8 +249,8 @@ pub fn maybe_drop_special(pickups: &mut Vec<Pickup>, e: &Enemy, t: f32) {
     } else {
         match e.kind {
             EnemyKind::Small | EnemyKind::Kamikaze => 0.0,
-            EnemyKind::Medium | EnemyKind::Strafer => 0.05,
-            EnemyKind::Large => 0.18,
+            EnemyKind::Medium | EnemyKind::Strafer | EnemyKind::Sniper | EnemyKind::Weaver => 0.05,
+            EnemyKind::Large | EnemyKind::MineLayer => 0.18,
             EnemyKind::Boss => 1.0,
         }
     };

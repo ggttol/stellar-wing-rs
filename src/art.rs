@@ -351,5 +351,73 @@ pub fn draw_enemy_ship(kind: EnemyKind, x: f32, y: f32, w: f32, h: f32, base: Co
             draw_circle(x - w * 0.55, y + h * 0.10, w * 0.05, with_alpha(hi, 0.7));
             draw_circle(x + w * 0.55, y + h * 0.10, w * 0.05, with_alpha(hi, 0.7));
         }
+        EnemyKind::Sniper => {
+            // 窄长机体 + 明显炮管，让高速狙击弹有来源感。
+            draw_triangle(
+                vec2(x, y + h * 0.54),
+                vec2(x + w * 0.24, y - h * 0.12),
+                vec2(x - w * 0.24, y - h * 0.12),
+                base,
+            );
+            draw_rectangle(x - w * 0.08, y - h * 0.48, w * 0.16, h * 0.76, dark);
+            draw_rectangle(x - w * 0.05, y + h * 0.14, w * 0.10, h * 0.42, hi);
+            draw_triangle(
+                vec2(x - w * 0.42, y - h * 0.04),
+                vec2(x - w * 0.08, y - h * 0.12),
+                vec2(x - w * 0.16, y + h * 0.20),
+                mid,
+            );
+            draw_triangle(
+                vec2(x + w * 0.42, y - h * 0.04),
+                vec2(x + w * 0.08, y - h * 0.12),
+                vec2(x + w * 0.16, y + h * 0.20),
+                mid,
+            );
+            draw_circle(x, y - h * 0.12, w * 0.07, cockpit);
+        }
+        EnemyKind::Weaver => {
+            // 双翼弧形机，和它的蛇形弹呼应。
+            draw_circle(x, y, w * 0.28, base);
+            draw_triangle(
+                vec2(x - w * 0.58, y - h * 0.18),
+                vec2(x - w * 0.08, y - h * 0.08),
+                vec2(x - w * 0.44, y + h * 0.30),
+                mid,
+            );
+            draw_triangle(
+                vec2(x + w * 0.58, y - h * 0.18),
+                vec2(x + w * 0.08, y - h * 0.08),
+                vec2(x + w * 0.44, y + h * 0.30),
+                mid,
+            );
+            draw_triangle(
+                vec2(x, y + h * 0.50),
+                vec2(x + w * 0.14, y + h * 0.04),
+                vec2(x - w * 0.14, y + h * 0.04),
+                hi,
+            );
+            draw_circle(x - w * 0.20, y + h * 0.06, w * 0.05, cockpit);
+            draw_circle(x + w * 0.20, y + h * 0.06, w * 0.05, cockpit);
+        }
+        EnemyKind::MineLayer => {
+            // 厚重投弹舱，强调慢速压迫型弹幕。
+            draw_rectangle(x - w * 0.30, y - h * 0.30, w * 0.60, h * 0.56, base);
+            draw_triangle(
+                vec2(x - w * 0.56, y - h * 0.06),
+                vec2(x - w * 0.24, y - h * 0.22),
+                vec2(x - w * 0.30, y + h * 0.30),
+                dark,
+            );
+            draw_triangle(
+                vec2(x + w * 0.56, y - h * 0.06),
+                vec2(x + w * 0.24, y - h * 0.22),
+                vec2(x + w * 0.30, y + h * 0.30),
+                dark,
+            );
+            draw_rectangle(x - w * 0.18, y + h * 0.04, w * 0.36, h * 0.20, mid);
+            draw_circle(x - w * 0.16, y + h * 0.16, w * 0.07, hi);
+            draw_circle(x + w * 0.16, y + h * 0.16, w * 0.07, hi);
+            draw_circle(x, y - h * 0.08, w * 0.08, cockpit);
+        }
     }
 }

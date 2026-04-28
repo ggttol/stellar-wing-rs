@@ -49,8 +49,8 @@ impl SynergyGauge {
         }
         let amount = match kind {
             EnemyKind::Small | EnemyKind::Kamikaze => 0.05,
-            EnemyKind::Medium | EnemyKind::Strafer => 0.08,
-            EnemyKind::Large => 0.15,
+            EnemyKind::Medium | EnemyKind::Strafer | EnemyKind::Sniper | EnemyKind::Weaver => 0.08,
+            EnemyKind::Large | EnemyKind::MineLayer => 0.15,
             EnemyKind::Boss => 0.50,
         };
         self.charge += amount;

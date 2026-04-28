@@ -1,4 +1,4 @@
-//! 反射镜：发射碰到屏幕边缘会反弹的弹丸，在封闭空间中制造复杂弹道路径。
+//! 反射镜：优先朝最近敌人发射可反弹弹丸，兼具精准首击和复杂反弹路径。
 //! 等级提升 → 弹数 + 反弹次数 + 射速。
 
 use crate::entity::{Bullet, Enemy, HitSource, Player};
@@ -21,7 +21,7 @@ impl Reflector {
     fn count(&self) -> usize {
         match self.level {
             1 => 1,
-            2 => 1,
+            2 => 2,
             3 => 2,
             4 => 2,
             _ => 3,
@@ -61,7 +61,7 @@ impl SubWeapon for Reflector {
         _dt: f32,
         t: f32,
         player: &Player,
-        _enemies: &mut [Enemy],
+        enemies: &mut [Enemy],
         bullets: &mut Vec<Bullet>,
         _fx: &mut Fx,
     ) {
@@ -70,27 +70,75 @@ impl SubWeapon for Reflector {
         }
         self.last_shot = t;
         let n = self.count();
-        let speed = 340.0; // 较慢的弹速，给反弹留观察空间
+        let speed = 430.0;
         let bounces = self.bounces();
+        let base_dir =
+            aim_at_nearest(enemies, player.x, player.y - player.h * 0.5).unwrap_or((0.0, -1.0));
 
         for i in 0..n {
-            // 扇形发射，角度越大反弹路径越丰富
-            let angles: [f32; 3] = [-0.30, 0.0, 0.30];
-            let ang = if n <= 1 { 0.0 } else { angles[i.min(2)] };
-            let vx = ang.sin() * speed * 1.5;
-            let vy = -ang.cos() * speed;
+            let offsets: [f32; 3] = [0.0, -0.24, 0.24];
+            let dir = rotate(base_dir, offsets[i.min(2)]);
+            let vx = dir.0 * speed;
+            let vy = dir.1 * speed;
 
             let mut b = Bullet::player_shot(player.x, player.y - player.h * 0.5, vx, vy);
-            let (dmg, crit) = roll_crit(player, 0.85 + self.level as f32 * 0.12);
+            let (dmg, crit) = roll_crit(player, 1.0 + self.level as f32 * 0.14);
             b.damage = dmg;
             b.is_crit = crit;
-            b.w = 5.0;
-            b.h = 5.0;
+            b.w = 7.0;
+            b.h = 7.0;
             b.source = HitSource::Reflector;
             b.bounces = bounces;
+            if self.level >= 4 {
+                b.pierce = 1;
+            }
             bullets.push(b);
         }
     }
 
     fn draw(&self, _player: &Player, _t: f32, _ox: f32, _oy: f32) {}
+}
+
+fn aim_at_nearest(enemies: &[Enemy], x: f32, y: f32) -> Option<(f32, f32)> {
+    enemies
+        .iter()
+        .filter(|e| !e.dead)
+        .map(|e| {
+            let dx = e.x - x;
+            let dy = e.y - y;
+            (dx, dy, dx * dx + dy * dy)
+        })
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(dx, dy, _)| {
+            let len = (dx * dx + dy * dy).sqrt().max(1.0);
+            (dx / len, dy / len)
+        })
+}
+
+fn rotate((x, y): (f32, f32), angle: f32) -> (f32, f32) {
+    let (s, c) = angle.sin_cos();
+    (x * c - y * s, x * s + y * c)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::EnemyKind;
+    use crate::ship::ShipType;
+
+    #[test]
+    fn reflector_aims_first_shot_toward_enemy() {
+        let player = Player::with_ship(ShipType::Vanguard);
+        let mut reflector = Reflector::new();
+        let mut enemies = vec![Enemy::new(EnemyKind::Medium, player.x + 120.0, 0.0)];
+        enemies[0].y = player.y - 160.0;
+        let mut bullets = Vec::new();
+        let mut fx = Fx::default();
+
+        reflector.tick(0.0, 1.2, &player, &mut enemies, &mut bullets, &mut fx);
+
+        assert_eq!(bullets.len(), 1);
+        assert!(bullets[0].vx > 0.0);
+        assert!(bullets[0].vy < 0.0);
+    }
 }

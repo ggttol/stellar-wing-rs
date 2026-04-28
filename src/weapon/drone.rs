@@ -1,5 +1,5 @@
-//! 环绕僚机：在玩家周围旋转，定期向前发射子弹。
-//! 等级提升 → 数量增加 + 射速更高。
+//! 环绕僚机：在玩家周围旋转，定期朝最近敌人射击。
+//! 等级提升 → 数量增加 + 射速更高 + 单发伤害略升。
 
 use macroquad::prelude::*;
 
@@ -63,7 +63,7 @@ impl SubWeapon for Drone {
         dt: f32,
         t: f32,
         player: &Player,
-        _enemies: &mut [Enemy],
+        enemies: &mut [Enemy],
         bullets: &mut Vec<Bullet>,
         _fx: &mut Fx,
     ) {
@@ -77,12 +77,16 @@ impl SubWeapon for Drone {
             let a = self.angle + i as f32 * std::f32::consts::TAU / n as f32;
             let dx = a.cos() * self.radius();
             let dy = a.sin() * self.radius();
-            let mut b = Bullet::player_shot(player.x + dx, player.y + dy, 0.0, -700.0);
-            let (dmg, crit) = roll_crit(player, 0.80);
+            let sx = player.x + dx;
+            let sy = player.y + dy;
+            let (vx, vy) = aim_at_nearest(enemies, sx, sy).unwrap_or((0.0, -1.0));
+            let speed = 650.0 + self.level as f32 * 25.0;
+            let mut b = Bullet::player_shot(sx, sy, vx * speed, vy * speed);
+            let (dmg, crit) = roll_crit(player, 0.86 + self.level as f32 * 0.04);
             b.damage = dmg;
             b.is_crit = crit;
-            b.w = 3.0;
-            b.h = 10.0;
+            b.w = 4.0;
+            b.h = 11.0;
             b.source = HitSource::Drone;
             bullets.push(b);
         }
@@ -103,5 +107,43 @@ impl SubWeapon for Drone {
             draw_circle(x, y, 4.5, Color::from_rgba(0, 212, 255, 255));
             draw_circle(x, y, 1.8, WHITE);
         }
+    }
+}
+
+fn aim_at_nearest(enemies: &[Enemy], x: f32, y: f32) -> Option<(f32, f32)> {
+    enemies
+        .iter()
+        .filter(|e| !e.dead)
+        .map(|e| {
+            let dx = e.x - x;
+            let dy = e.y - y;
+            (dx, dy, dx * dx + dy * dy)
+        })
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(dx, dy, _)| {
+            let len = (dx * dx + dy * dy).sqrt().max(1.0);
+            (dx / len, dy / len)
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::EnemyKind;
+    use crate::ship::ShipType;
+
+    #[test]
+    fn drone_aims_at_side_enemy_instead_of_only_up() {
+        let player = Player::with_ship(ShipType::Vanguard);
+        let mut drone = Drone::new();
+        let mut enemies = vec![Enemy::new(EnemyKind::Medium, player.x + 160.0, 0.0)];
+        enemies[0].y = player.y - 20.0;
+        let mut bullets = Vec::new();
+        let mut fx = Fx::default();
+
+        drone.tick(0.0, 1.0, &player, &mut enemies, &mut bullets, &mut fx);
+
+        assert_eq!(bullets.len(), 1);
+        assert!(bullets[0].vx.abs() > 100.0);
     }
 }

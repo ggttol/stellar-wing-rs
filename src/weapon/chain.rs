@@ -28,6 +28,9 @@ impl Chain {
     fn range(&self) -> f32 {
         140.0 + self.level as f32 * 10.0
     }
+    fn first_range(&self) -> f32 {
+        520.0 + self.level as f32 * 35.0
+    }
     fn damage_mul(&self) -> f32 {
         1.45 + self.level as f32 * 0.28
     }
@@ -60,13 +63,18 @@ impl SubWeapon for Chain {
         }
         self.last_shot = t;
         let max_jumps = self.jumps();
-        let range = self.range();
+        let jump_range = self.range();
         let color = Color::from_rgba(150, 220, 255, 255);
 
         let mut from = (player.x, player.y - player.h * 0.5);
         let mut hit: Vec<usize> = Vec::with_capacity(max_jumps);
 
-        for _ in 0..max_jumps {
+        for hop in 0..max_jumps {
+            let range = if hop == 0 {
+                self.first_range()
+            } else {
+                jump_range
+            };
             let mut best: Option<usize> = None;
             let mut best_d2 = range * range;
             for (i, e) in enemies.iter().enumerate() {
@@ -107,7 +115,7 @@ impl SubWeapon for Chain {
             // Resonance 额外跳
             for _ in 0..extra_jumps {
                 let mut best2: Option<usize> = None;
-                let mut best_d2 = range * range;
+                let mut best_d2 = jump_range * jump_range;
                 for (j, ej) in enemies.iter().enumerate() {
                     if ej.dead || hit.contains(&j) {
                         continue;
@@ -149,4 +157,26 @@ impl SubWeapon for Chain {
     }
 
     fn draw(&self, _player: &Player, _t: f32, _ox: f32, _oy: f32) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::EnemyKind;
+    use crate::ship::ShipType;
+
+    #[test]
+    fn chain_first_jump_reaches_screen_enemies() {
+        let player = Player::with_ship(ShipType::Vanguard);
+        let mut chain = Chain::new();
+        let mut enemies = vec![Enemy::new(EnemyKind::Medium, player.x, 0.0)];
+        enemies[0].y = player.y - 430.0;
+        let hp = enemies[0].hp;
+        let mut bullets = Vec::new();
+        let mut fx = Fx::default();
+
+        chain.tick(0.0, 2.0, &player, &mut enemies, &mut bullets, &mut fx);
+
+        assert!(enemies[0].hp < hp);
+    }
 }

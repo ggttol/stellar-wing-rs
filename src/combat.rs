@@ -177,6 +177,9 @@ pub fn process_kills(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) -> b
                 EnemyKind::Boss => 0.3,
                 EnemyKind::Kamikaze => 0.030,
                 EnemyKind::Strafer => 0.045,
+                EnemyKind::Sniper => 0.050,
+                EnemyKind::Weaver => 0.042,
+                EnemyKind::MineLayer => 0.070,
             })
         .min(1.0);
         if world.combo.is_multiple_of(10) {
@@ -189,6 +192,9 @@ pub fn process_kills(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) -> b
             EnemyKind::Boss => (4.0, Color::from_rgba(255, 90, 140, 255), true),
             EnemyKind::Kamikaze => (1.1, Color::from_rgba(255, 100, 130, 255), false),
             EnemyKind::Strafer => (1.4, Color::from_rgba(125, 220, 255, 255), false),
+            EnemyKind::Sniper => (1.5, Color::from_rgba(255, 206, 96, 255), false),
+            EnemyKind::Weaver => (1.35, Color::from_rgba(92, 240, 210, 255), false),
+            EnemyKind::MineLayer => (1.8, Color::from_rgba(255, 158, 76, 255), true),
         };
         fx.explode(e.x, e.y, scale, color);
         drop_xp_gems(&mut world.pickups, e);

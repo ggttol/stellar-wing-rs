@@ -1,5 +1,6 @@
-//! 虚空裂隙：部署型伤害场。在玩家位置放置持续数秒的裂隙，周期性脉冲伤害范围内敌人。
-//! 等级提升 → 裂隙数量 + 持续时间 + 脉冲频率 + 范围。
+//! 虚空裂隙：追猎型伤害场。裂隙会从玩家附近生成，主动漂向最近敌人，
+//! 持续灼烧范围内目标，并周期性释放更强脉冲。
+//! 等级提升 → 裂隙数量 + 持续时间 + 脉冲频率 + 范围 + 追猎速度。
 
 use macroquad::prelude::*;
 
@@ -10,8 +11,11 @@ use crate::weapon::{roll_crit, SubWeapon};
 struct RiftInstance {
     x: f32,
     y: f32,
+    vx: f32,
+    vy: f32,
     life: f32,
     pulse_timer: f32,
+    burn_timer: f32,
 }
 
 pub struct VoidRift {
@@ -40,15 +44,15 @@ impl VoidRift {
     }
 
     fn lifetime(&self) -> f32 {
-        2.5 + self.level as f32 * 0.4
+        3.8 + self.level as f32 * 0.45
     }
 
     fn pulse_interval(&self) -> f32 {
-        (1.2 - (self.level as f32 - 1.0) * 0.1).max(0.8)
+        (1.0 - (self.level as f32 - 1.0) * 0.08).max(0.68)
     }
 
     fn radius(&self) -> f32 {
-        55.0 + self.level as f32 * 7.0
+        66.0 + self.level as f32 * 8.0
     }
 
     fn place_interval(&self) -> f32 {
@@ -63,6 +67,10 @@ impl VoidRift {
 
     fn base_damage(&self) -> f32 {
         1.2 + self.level as f32 * 0.28
+    }
+
+    fn chase_speed(&self) -> f32 {
+        190.0 + self.level as f32 * 22.0
     }
 }
 
@@ -96,15 +104,19 @@ impl SubWeapon for VoidRift {
             }
             self.rifts.push(RiftInstance {
                 x: player.x,
-                y: player.y,
+                y: player.y - 24.0,
+                vx: 0.0,
+                vy: -self.chase_speed() * 0.45,
                 life: self.lifetime(),
-                pulse_timer: 0.0,
+                pulse_timer: self.pulse_interval(),
+                burn_timer: 0.0,
             });
         }
 
         let radius = self.radius();
         let interval = self.pulse_interval();
         let base = self.base_damage();
+        let chase_speed = self.chase_speed();
         let color = Color::from_rgba(160, 100, 255, 255);
         let gravity = player.perks.gravity_well;
 
@@ -112,6 +124,21 @@ impl SubWeapon for VoidRift {
         self.rifts.retain_mut(|r| {
             r.life -= dt;
             r.pulse_timer += dt;
+            r.burn_timer += dt;
+
+            if let Some((dx, dy, dist)) = nearest_enemy_delta(enemies, r.x, r.y) {
+                let desired_vx = dx / dist * chase_speed;
+                let desired_vy = dy / dist * chase_speed;
+                let steer = (6.0 * dt).min(1.0);
+                r.vx += (desired_vx - r.vx) * steer;
+                r.vy += (desired_vy - r.vy) * steer;
+            } else {
+                let steer = (2.0 * dt).min(1.0);
+                r.vx += (0.0 - r.vx) * steer;
+                r.vy += (-90.0 - r.vy) * steer;
+            }
+            r.x += r.vx * dt;
+            r.y += r.vy * dt;
 
             // Gravity Well：缓慢吸入敌人
             if gravity && r.life > 0.0 {
@@ -128,6 +155,28 @@ impl SubWeapon for VoidRift {
                         e.x += dx / d * pull;
                         e.y += dy / d * pull;
                     }
+                }
+            }
+
+            if r.burn_timer >= 0.22 {
+                r.burn_timer = 0.0;
+                let mut hit_count = 0u32;
+                for e in enemies.iter_mut() {
+                    if e.dead {
+                        continue;
+                    }
+                    let dx = r.x - e.x;
+                    let dy = r.y - e.y;
+                    if dx * dx + dy * dy < radius * radius {
+                        let (dmg, _) = roll_crit(player, base * 0.34);
+                        e.hp -= dmg * e.damage_mul();
+                        e.hit_flash = 0.05;
+                        e.last_hit = HitSource::Rift;
+                        hit_count += 1;
+                    }
+                }
+                if hit_count > 0 {
+                    fx.burst(r.x, r.y, 2, 1.6, color, 36.0);
                 }
             }
 
@@ -149,7 +198,7 @@ impl SubWeapon for VoidRift {
                     }
                 }
                 if hit_count > 0 {
-                    fx.burst(r.x, r.y, 4, 2.5, color, 60.0);
+                    fx.burst(r.x, r.y, 7, 3.0, color, 90.0);
                 }
             }
             r.life > 0.0
@@ -193,5 +242,44 @@ impl SubWeapon for VoidRift {
                 draw_circle(px, py, 2.0, pc);
             }
         }
+    }
+}
+
+fn nearest_enemy_delta(enemies: &[Enemy], x: f32, y: f32) -> Option<(f32, f32, f32)> {
+    enemies
+        .iter()
+        .filter(|e| !e.dead)
+        .map(|e| {
+            let dx = e.x - x;
+            let dy = e.y - y;
+            let d2 = dx * dx + dy * dy;
+            (dx, dy, d2)
+        })
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(dx, dy, d2)| (dx, dy, d2.sqrt().max(1.0)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::EnemyKind;
+    use crate::ship::ShipType;
+
+    #[test]
+    fn rift_chases_nearest_enemy_and_deals_damage() {
+        let player = Player::with_ship(ShipType::Vanguard);
+        let mut rift = VoidRift::new();
+        let mut enemies = vec![Enemy::new(EnemyKind::Medium, player.x, 360.0)];
+        enemies[0].y = player.y - 120.0;
+        let hp = enemies[0].hp;
+        let mut bullets = Vec::new();
+        let mut fx = Fx::default();
+
+        rift.tick(0.1, 10.0, &player, &mut enemies, &mut bullets, &mut fx);
+        let start_y = rift.rifts[0].y;
+        rift.tick(0.3, 10.3, &player, &mut enemies, &mut bullets, &mut fx);
+
+        assert!(rift.rifts[0].y < start_y);
+        assert!(enemies[0].hp < hp);
     }
 }

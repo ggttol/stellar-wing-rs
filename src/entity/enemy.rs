@@ -42,6 +42,12 @@ pub enum EnemyKind {
     Kamikaze,
     /// 横向扫射：从屏幕一侧滑过，沿途持续射击。
     Strafer,
+    /// 狙击机：短暂停顿后发射高速预判弹。
+    Sniper,
+    /// 编织机：发射左右摆动的蛇形弹。
+    Weaver,
+    /// 布雷机：投放缓慢下坠、体积更大的压迫弹。
+    MineLayer,
 }
 
 impl EnemyKind {
@@ -101,6 +107,39 @@ impl EnemyKind {
                 speed: 220.0,
                 fire_rate: 0.55,
                 color: Color::from_rgba(125, 220, 255, 255),
+            },
+            EnemyKind::Sniper => EnemyStats {
+                w: 42.0,
+                h: 50.0,
+                radius: 19.0,
+                hp: 2.4,
+                score: 55,
+                xp: 4,
+                speed: 52.0,
+                fire_rate: 2.35,
+                color: Color::from_rgba(255, 206, 96, 255),
+            },
+            EnemyKind::Weaver => EnemyStats {
+                w: 44.0,
+                h: 38.0,
+                radius: 18.0,
+                hp: 2.2,
+                score: 50,
+                xp: 4,
+                speed: 78.0,
+                fire_rate: 1.15,
+                color: Color::from_rgba(92, 240, 210, 255),
+            },
+            EnemyKind::MineLayer => EnemyStats {
+                w: 62.0,
+                h: 54.0,
+                radius: 25.0,
+                hp: 4.0,
+                score: 85,
+                xp: 6,
+                speed: 46.0,
+                fire_rate: 1.65,
+                color: Color::from_rgba(255, 158, 76, 255),
             },
             EnemyKind::Boss => EnemyStats {
                 w: 180.0,
@@ -173,6 +212,8 @@ pub struct Enemy {
     pub last_hit: HitSource,
     /// 本敌人发射的子弹伤害，由 spawn 端根据 run_time 设置。
     pub bullet_damage: f32,
+    /// 本敌人发射的子弹速度倍率，由 spawn 端按局内时间渐进提升。
+    pub bullet_speed_mul: f32,
     pub dead: bool,
 }
 
@@ -197,6 +238,9 @@ impl Enemy {
             last_shot: t + match kind {
                 EnemyKind::Medium => 1.0,
                 EnemyKind::Large => 0.6,
+                EnemyKind::Sniper => 1.4,
+                EnemyKind::Weaver => 0.8,
+                EnemyKind::MineLayer => 1.1,
                 EnemyKind::Boss => 1.5,
                 _ => 0.0,
             },
@@ -222,13 +266,15 @@ impl Enemy {
             should_shake: false,
             last_hit: HitSource::Enemy,
             bullet_damage: 1.0,
+            bullet_speed_mul: 1.0,
             dead: false,
         }
     }
 
     /// 创建一发敌方子弹，自动使用本敌人的 bullet_damage。
     fn make_bullet(&self, x: f32, y: f32, vx: f32, vy: f32) -> Bullet {
-        let mut b = Bullet::enemy_shot(x, y, vx, vy);
+        let mut b =
+            Bullet::enemy_shot(x, y, vx * self.bullet_speed_mul, vy * self.bullet_speed_mul);
         b.damage = self.bullet_damage;
         b
     }
@@ -328,7 +374,14 @@ impl Enemy {
                 }
                 if self.fire_rate > 0.0 && t - self.last_shot >= self.fire_rate {
                     self.last_shot = t;
-                    bullets.push(self.make_bullet(self.x, self.y + self.h * 0.4, 0.0, 300.0));
+                    for off in [-10.0_f32, 10.0] {
+                        bullets.push(self.make_bullet(
+                            self.x + off,
+                            self.y + self.h * 0.4,
+                            self.vx.signum() * -52.0,
+                            240.0,
+                        ));
+                    }
                 }
             }
             _ => {
@@ -338,10 +391,10 @@ impl Enemy {
                 }
                 self.y += self.vy * dt;
                 match self.kind {
-                    EnemyKind::Medium => {
+                    EnemyKind::Medium | EnemyKind::Sniper | EnemyKind::Weaver => {
                         self.x += (self.y / 60.0).sin() * 18.0 * dt * speed_mul;
                     }
-                    EnemyKind::Large => {
+                    EnemyKind::Large | EnemyKind::MineLayer => {
                         self.x += (self.y / 80.0).sin() * 30.0 * dt * speed_mul;
                     }
                     _ => {}
@@ -394,19 +447,16 @@ impl Enemy {
     fn fire_normal(&self, player_x: f32, bullets: &mut Vec<Bullet>) {
         match self.kind {
             EnemyKind::Medium => {
-                let dx = player_x - self.x;
-                let dy = (CFG.h - 100.0) - self.y;
-                let len = (dx * dx + dy * dy).sqrt().max(1.0);
-                let speed = 320.0;
-                bullets.push(self.make_bullet(
+                bullets.push(self.aimed_bullet(
+                    player_x,
+                    CFG.h - 100.0,
                     self.x,
                     self.y + self.h * 0.5,
-                    dx / len * speed,
-                    dy / len * speed,
+                    260.0,
                 ));
             }
             EnemyKind::Large => {
-                let speed = 320.0;
+                let speed = 255.0;
                 bullets.push(self.make_bullet(self.x, self.y + self.h * 0.5, 0.0, speed));
                 bullets.push(self.make_bullet(
                     self.x - 15.0,
@@ -421,8 +471,50 @@ impl Enemy {
                     speed * 0.9,
                 ));
             }
+            EnemyKind::Sniper => {
+                let mut b = self.aimed_bullet(
+                    player_x,
+                    CFG.h - 82.0,
+                    self.x,
+                    self.y + self.h * 0.52,
+                    420.0,
+                );
+                b.w = 6.0;
+                b.h = 30.0;
+                b.damage *= 1.25;
+                bullets.push(b);
+            }
+            EnemyKind::Weaver => {
+                for off in [-13.0_f32, 13.0] {
+                    let mut b =
+                        self.make_bullet(self.x + off, self.y + self.h * 0.48, off * 3.6, 185.0);
+                    b.wave_amp = 48.0;
+                    b.wave_freq = 8.0;
+                    b.wave_phase = if off < 0.0 { 0.0 } else { std::f32::consts::PI };
+                    b.w = 7.0;
+                    b.h = 16.0;
+                    bullets.push(b);
+                }
+            }
+            EnemyKind::MineLayer => {
+                for off in [-18.0_f32, 18.0] {
+                    let mut b =
+                        self.make_bullet(self.x + off, self.y + self.h * 0.48, off * 1.2, 78.0);
+                    b.w = 22.0;
+                    b.h = 22.0;
+                    b.damage *= 1.15;
+                    bullets.push(b);
+                }
+            }
             _ => {}
         }
+    }
+
+    fn aimed_bullet(&self, target_x: f32, target_y: f32, x: f32, y: f32, speed: f32) -> Bullet {
+        let dx = target_x - x;
+        let dy = target_y - y;
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        self.make_bullet(x, y, dx / len * speed, dy / len * speed)
     }
 
     fn update_boss(
@@ -733,5 +825,47 @@ impl Enemy {
             c,
             (self.hp / self.max_hp).max(0.0),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sniper_fires_fast_thin_shot() {
+        let sniper = Enemy::new(EnemyKind::Sniper, 220.0, 0.0);
+        let mut bullets = Vec::new();
+
+        sniper.fire_normal(260.0, &mut bullets);
+
+        assert_eq!(bullets.len(), 1);
+        assert!(bullets[0].vy > 400.0);
+        assert_eq!(bullets[0].h, 30.0);
+        assert!(bullets[0].damage > sniper.bullet_damage);
+    }
+
+    #[test]
+    fn weaver_fires_mirrored_wave_pair() {
+        let weaver = Enemy::new(EnemyKind::Weaver, 220.0, 0.0);
+        let mut bullets = Vec::new();
+
+        weaver.fire_normal(260.0, &mut bullets);
+
+        assert_eq!(bullets.len(), 2);
+        assert!(bullets.iter().all(|b| b.wave_amp > 0.0));
+        assert_ne!(bullets[0].wave_phase, bullets[1].wave_phase);
+    }
+
+    #[test]
+    fn mine_layer_drops_large_slow_ordnance() {
+        let mine_layer = Enemy::new(EnemyKind::MineLayer, 220.0, 0.0);
+        let mut bullets = Vec::new();
+
+        mine_layer.fire_normal(260.0, &mut bullets);
+
+        assert_eq!(bullets.len(), 2);
+        assert!(bullets.iter().all(|b| b.w >= 14.0));
+        assert!(bullets.iter().all(|b| b.vy < 100.0));
     }
 }

@@ -91,13 +91,15 @@ impl Bullet {
     }
 
     pub fn update(&mut self, dt: f32) {
-        self.x += self.vx * dt;
         self.y += self.vy * dt;
 
-        // Wave Cannon 正弦摆动
+        // Wave Cannon / Weaver：摆动中心也要随 vx 推进，否则横向速度会被正弦覆盖。
         if self.wave_amp > 0.0 {
+            self.spawn_x += self.vx * dt;
             self.wave_phase += dt * self.wave_freq;
             self.x = self.spawn_x + self.wave_amp * self.wave_phase.sin();
+        } else {
+            self.x += self.vx * dt;
         }
 
         // Reflector 屏幕边缘反弹
@@ -150,7 +152,15 @@ impl Bullet {
                 Color::from_rgba(155, 240, 255, 255)
             }
         } else {
-            Color::from_rgba(255, 85, 119, 255)
+            if self.wave_amp > 0.0 {
+                Color::from_rgba(92, 240, 210, 255)
+            } else if self.h >= 18.0 {
+                Color::from_rgba(255, 206, 96, 255)
+            } else if self.w >= 12.0 {
+                Color::from_rgba(255, 158, 76, 255)
+            } else {
+                Color::from_rgba(255, 85, 119, 255)
+            }
         };
         let mut g = c;
         g.a = if self.is_crit { 0.6 } else { 0.35 };
@@ -161,10 +171,26 @@ impl Bullet {
         };
         let sx = self.x + ox;
         let sy = self.y + oy;
-        draw_circle(sx, sy, glow_r, g);
+        let enemy_wave = !self.from_player && self.wave_amp > 0.0;
+        draw_circle(sx, sy, if enemy_wave { glow_r * 1.25 } else { glow_r }, g);
         let w = if self.is_crit { self.w * 1.4 } else { self.w };
-        draw_rectangle(sx - w * 0.5, sy - self.h * 0.5, w, self.h, c);
+        if enemy_wave {
+            draw_circle(sx, sy, self.w * 0.85, c);
+            draw_circle(sx, sy - self.h * 0.36, self.w * 0.45, with_alpha(c, 0.65));
+            draw_circle(sx, sy + self.h * 0.36, self.w * 0.45, with_alpha(c, 0.65));
+        } else if !self.from_player && self.w >= 12.0 {
+            draw_circle(sx, sy, self.w * 0.5, c);
+            draw_circle_lines(sx, sy, self.w * 0.72, 2.0, with_alpha(c, 0.45));
+            draw_circle_lines(sx, sy, self.w * 1.05, 1.5, with_alpha(c, 0.28));
+        } else {
+            draw_rectangle(sx - w * 0.5, sy - self.h * 0.5, w, self.h, c);
+        }
     }
+}
+
+fn with_alpha(mut c: Color, a: f32) -> Color {
+    c.a = a;
+    c
 }
 
 #[cfg(test)]
@@ -188,14 +214,14 @@ mod tests {
 
     #[test]
     fn wave_bullet_tracks_spawn_center_with_sine_offset() {
-        let mut bullet = Bullet::player_shot(120.0, 200.0, 0.0, -100.0);
+        let mut bullet = Bullet::player_shot(120.0, 200.0, 20.0, -100.0);
         bullet.wave_amp = 40.0;
         bullet.wave_freq = 2.0;
 
         bullet.update(0.25);
 
-        assert_eq!(bullet.spawn_x, 120.0);
-        assert_ne!(bullet.x, 120.0);
+        assert_eq!(bullet.spawn_x, 125.0);
+        assert_ne!(bullet.x, bullet.spawn_x);
         assert!(bullet.y < 200.0);
     }
 }

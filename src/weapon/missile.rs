@@ -18,7 +18,7 @@ impl Missile {
     }
 
     fn interval(&self) -> f32 {
-        (1.7 - (self.level as f32 - 1.0) * 0.15).max(0.85)
+        (1.55 - (self.level as f32 - 1.0) * 0.14).max(0.78)
     }
 
     fn count(&self) -> usize {
@@ -27,7 +27,7 @@ impl Missile {
             2 => 1,
             3 => 2,
             4 => 2,
-            _ => 2,
+            _ => 3,
         }
     }
 }
@@ -63,8 +63,8 @@ impl SubWeapon for Missile {
             let off = (i as f32 - (n as f32 - 1.0) * 0.5) * 14.0;
             // 初始向上 + 轻微外扩
             let vx = if n > 1 { off * 4.0 } else { 0.0 };
-            let mut b = Bullet::player_shot(player.x + off, player.y - player.h * 0.5, vx, -260.0);
-            let (dmg, crit) = roll_crit(player, 1.50);
+            let mut b = Bullet::player_shot(player.x + off, player.y - player.h * 0.5, vx, -300.0);
+            let (dmg, crit) = roll_crit(player, 1.65 + self.level as f32 * 0.05);
             b.damage = dmg;
             b.is_crit = crit;
             b.homing = true;
