@@ -148,6 +148,15 @@ impl WeaponSlot {
     pub fn find_mut(&mut self, id: &str) -> Option<&mut Box<dyn SubWeapon>> {
         self.subs.iter_mut().find(|s| s.id() == id)
     }
+
+    /// 副武器递减收益：0-2 个无惩罚，3 个 ×0.92，4 个 ×0.85。
+    pub fn sub_penalty(&self) -> f32 {
+        match self.subs.len() {
+            0..=2 => 1.0,
+            3 => 0.92,
+            _ => 0.85,
+        }
+    }
 }
 
 /// 武器统一的暴击滚动：返回 (damage, is_crit)。`base_mul` 是该武器对玩家伤害的基础倍率。

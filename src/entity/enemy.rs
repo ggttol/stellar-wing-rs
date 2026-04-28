@@ -166,6 +166,8 @@ pub struct Enemy {
     /// Hydra：50% HP 触发的"分裂"是否已经放过
     pub hydra_split: bool,
     pub last_hit: HitSource,
+    /// 本敌人发射的子弹伤害，由 spawn 端根据 run_time 设置。
+    pub bullet_damage: f32,
     pub dead: bool,
 }
 
@@ -211,8 +213,16 @@ impl Enemy {
             phantom_blink_in: 6.0,
             hydra_split: false,
             last_hit: HitSource::Enemy,
+            bullet_damage: 1.0,
             dead: false,
         }
+    }
+
+    /// 创建一发敌方子弹，自动使用本敌人的 bullet_damage。
+    fn make_bullet(&self, x: f32, y: f32, vx: f32, vy: f32) -> Bullet {
+        let mut b = Bullet::enemy_shot(x, y, vx, vy);
+        b.damage = self.bullet_damage;
+        b
     }
 
     pub fn into_elite(mut self, elite_mod: EliteMod) -> Self {
@@ -302,7 +312,7 @@ impl Enemy {
                 }
                 if self.fire_rate > 0.0 && t - self.last_shot >= self.fire_rate {
                     self.last_shot = t;
-                    bullets.push(Bullet::enemy_shot(
+                    bullets.push(self.make_bullet(
                         self.x,
                         self.y + self.h * 0.4,
                         0.0,
@@ -377,7 +387,7 @@ impl Enemy {
                 let dy = (CFG.h - 100.0) - self.y;
                 let len = (dx * dx + dy * dy).sqrt().max(1.0);
                 let speed = 320.0;
-                bullets.push(Bullet::enemy_shot(
+                bullets.push(self.make_bullet(
                     self.x,
                     self.y + self.h * 0.5,
                     dx / len * speed,
@@ -386,19 +396,19 @@ impl Enemy {
             }
             EnemyKind::Large => {
                 let speed = 320.0;
-                bullets.push(Bullet::enemy_shot(
+                bullets.push(self.make_bullet(
                     self.x,
                     self.y + self.h * 0.5,
                     0.0,
                     speed,
                 ));
-                bullets.push(Bullet::enemy_shot(
+                bullets.push(self.make_bullet(
                     self.x - 15.0,
                     self.y + self.h * 0.5 - 6.0,
                     -75.0,
                     speed * 0.9,
                 ));
-                bullets.push(Bullet::enemy_shot(
+                bullets.push(self.make_bullet(
                     self.x + 15.0,
                     self.y + self.h * 0.5 - 6.0,
                     75.0,
@@ -500,7 +510,7 @@ impl Enemy {
             let speed = 280.0;
             for i in 0..spokes {
                 let ang = i as f32 * std::f32::consts::TAU / spokes as f32;
-                bullets.push(Bullet::enemy_shot(
+                bullets.push(self.make_bullet(
                     self.x,
                     self.y,
                     ang.cos() * speed,
@@ -509,7 +519,7 @@ impl Enemy {
             }
             // 4 发左右散弹
             for i in [-2.0_f32, -1.0, 1.0, 2.0] {
-                bullets.push(Bullet::enemy_shot(
+                bullets.push(self.make_bullet(
                     self.x + i * 18.0,
                     muzzle_y,
                     i * 60.0,
@@ -541,7 +551,7 @@ impl Enemy {
                     t,
                 );
                 minion.y = self.y + 24.0;
-                bullets.push(Bullet::enemy_shot(
+                bullets.push(self.make_bullet(
                     minion.x,
                     minion.y + 8.0,
                     0.0,
@@ -564,7 +574,7 @@ impl Enemy {
                     } else {
                         360.0
                     };
-                    bullets.push(Bullet::enemy_shot(
+                    bullets.push(self.make_bullet(
                         self.x + off,
                         muzzle_y,
                         dx / len * speed,
@@ -576,7 +586,7 @@ impl Enemy {
                 let speed = 320.0;
                 for i in -2..=2 {
                     let ang = i as f32 * 0.20_f32;
-                    bullets.push(Bullet::enemy_shot(
+                    bullets.push(self.make_bullet(
                         self.x,
                         muzzle_y,
                         ang.sin() * speed,
@@ -589,7 +599,7 @@ impl Enemy {
                             continue;
                         }
                         let ang = i as f32 * 0.15_f32;
-                        bullets.push(Bullet::enemy_shot(
+                        bullets.push(self.make_bullet(
                             self.x,
                             muzzle_y,
                             ang.sin() * 260.0,
@@ -608,7 +618,7 @@ impl Enemy {
                 for i in 0..spokes {
                     let ang =
                         i as f32 * std::f32::consts::TAU / spokes as f32 + (life * 0.6).sin() * 0.2;
-                    bullets.push(Bullet::enemy_shot(
+                    bullets.push(self.make_bullet(
                         self.x,
                         self.y,
                         ang.cos() * speed,
@@ -618,7 +628,7 @@ impl Enemy {
                 let dx = player_x - self.x;
                 let dy = (CFG.h - 100.0) - muzzle_y;
                 let len = (dx * dx + dy * dy).sqrt().max(1.0);
-                bullets.push(Bullet::enemy_shot(
+                bullets.push(self.make_bullet(
                     self.x,
                     muzzle_y,
                     dx / len * 380.0,

@@ -60,6 +60,8 @@ pub struct World {
     pub synergy: SynergyGauge,
     /// 进入过载瞬间的视觉脉冲（0..1，倒数到 0）
     pub overload_flash: f32,
+    /// 无尽模式伤害加成：每圈 +4%（用于抵消 Boss HP 指数增长）
+    pub endless_damage_bonus: f32,
 }
 
 impl World {
@@ -94,6 +96,7 @@ impl World {
             hit_sfx_cooldown: 0.0,
             synergy: SynergyGauge::new(),
             overload_flash: 0.0,
+            endless_damage_bonus: 0.0,
         }
     }
 

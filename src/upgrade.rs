@@ -63,9 +63,10 @@ fn move_speed_up(p: &mut Player, _: &mut WeaponSlot) {
     p.stats.speed = (p.stats.speed * 1.10).min(2200.0);
 }
 fn max_hp_up(p: &mut Player, _: &mut WeaponSlot) {
-    if p.stats.max_lives < 5 {
+    if p.perks.hull_plating_picks < 2 {
         p.stats.max_lives = p.stats.max_lives.saturating_add(1);
         p.lives = p.lives.saturating_add(1).min(p.stats.max_lives);
+        p.perks.hull_plating_picks += 1;
     }
 }
 fn pickup_radius_up(p: &mut Player, _: &mut WeaponSlot) {

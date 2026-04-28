@@ -457,6 +457,11 @@ fn step_play(world: &mut World, fx: &mut fx::Fx, audio: &Audio, dt: f32, t: f32)
             world.boss_alive = false;
             world.bosses_killed_run += 1;
             world.chapter_idx += 1;
+            // 无尽模式每圈 +4% 伤害，抵消 Boss HP 指数增长
+            if world.is_endless() {
+                let lap = (world.chapter_idx - crate::chapter::total()) as f32;
+                world.endless_damage_bonus = (lap * 0.04).max(0.0);
+            }
             world.chapter_time = 0.0;
             world.chapter_boss_spawned = false;
             world.chapter_intro = 2.5;

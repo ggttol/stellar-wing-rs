@@ -29,6 +29,8 @@ pub struct CombatPerks {
     pub heat_lock: bool,
     pub static_mark: bool,
     pub drone_relay: bool,
+    /// Hull Plating 升级卡已选取次数（上限 2）。
+    pub hull_plating_picks: u8,
 }
 
 impl Default for PlayerStats {

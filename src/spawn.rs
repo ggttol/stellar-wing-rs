@@ -15,7 +15,7 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
 
     // 章节内时钟主导基础密度；越后章节密度越大。
     let chap_t = world.chapter_time;
-    let sm_intv = lerp(chap_t / 90.0, 1.4, 0.50) / intensity;
+    let sm_intv = (lerp(chap_t / 90.0, 1.4, 0.50) / intensity).min(0.75); // 防止章节开头散步真空期
     let md_intv = if chap_t < 8.0 {
         f32::INFINITY
     } else {
@@ -127,8 +127,9 @@ fn spawn_strafer(t: f32, run_time: f32) -> Enemy {
     e.y = rng.gen_range(80.0..220.0);
     e.vx = if from_left { speed } else { -speed };
     e.vy = 0.0;
-    let hp_mul = (1.0 + run_time / 95.0).min(4.0);
+    let hp_mul = 1.0 + run_time / 55.0;
     e.hp *= hp_mul;
+    e.bullet_damage = 1.0 + run_time / 100.0;
     e.max_hp = e.hp;
     e.score = ((e.score as f32) * (1.0 + run_time / 180.0)) as u32;
     e
@@ -136,9 +137,10 @@ fn spawn_strafer(t: f32, run_time: f32) -> Enemy {
 
 pub fn spawn_enemy(kind: EnemyKind, x: f32, t: f32, run_time: f32) -> Enemy {
     let mut enemy = Enemy::new(kind, x, t);
-    let hp_mul = (1.0 + run_time / 95.0).min(4.0);
-    let score_mul = (1.0 + run_time / 180.0).min(2.4);
+    let hp_mul = 1.0 + run_time / 55.0; // 无上限持续增长
+    let score_mul = 1.0 + run_time / 180.0; // 分数倍率也不再封顶
     enemy.hp *= hp_mul;
+    enemy.bullet_damage = 1.0 + run_time / 100.0; // 敌方子弹伤害随时间增长
     enemy.max_hp = enemy.hp;
     enemy.score = ((enemy.score as f32) * score_mul) as u32;
     enemy.xp = ((enemy.xp as f32) * (1.0 + run_time / 220.0)).ceil() as u32;
@@ -182,13 +184,15 @@ pub fn spawn_chapter_boss(world: &mut World, t: f32) {
         // 双 Boss：左右站位
         for x in [CFG.w * 0.30, CFG.w * 0.70] {
             let mut boss = Enemy::new(EnemyKind::Boss, x, t);
-            boss.hp *= 1.20 * scaled_hp_mul;
+            boss.hp *= 1.20 * scaled_hp_mul * (1.0 + world.run_time / 70.0);
+            boss.bullet_damage = 1.0 + world.run_time / 100.0;
             boss.max_hp = boss.hp;
             world.enemies.push(boss.into_boss_mod(pick_mod()));
         }
     } else {
         let mut boss = Enemy::new(EnemyKind::Boss, CFG.w * 0.5, t);
-        boss.hp *= 1.35 * scaled_hp_mul;
+        boss.hp *= 1.35 * scaled_hp_mul * (1.0 + world.run_time / 70.0);
+        boss.bullet_damage = 1.0 + world.run_time / 100.0;
         boss.max_hp = boss.hp;
         world.enemies.push(boss.into_boss_mod(pick_mod()));
     }

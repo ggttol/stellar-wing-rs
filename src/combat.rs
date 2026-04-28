@@ -52,6 +52,12 @@ fn steer_one(b: &mut Bullet, enemies: &[Enemy], dt: f32) {
 pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32, dt: f32) {
     let crit_mul = world.player.stats.crit_mul;
     let overload_mul = world.synergy.damage_mul();
+    // combo 伤害加成：50 连 5%，100 连 10%
+    let combo_dmg = if world.combo >= 100 { 1.10 } else if world.combo >= 50 { 1.05 } else { 1.0 };
+    // 副武器递减：≥3 个副武器时所有副武器伤害打折
+    let sub_penalty = world.weapons.sub_penalty();
+    // 无尽模式每圈伤害加成
+    let endless_bonus = 1.0 + world.endless_damage_bonus;
     if world.hit_sfx_cooldown > 0.0 {
         world.hit_sfx_cooldown -= dt;
     }
@@ -66,7 +72,11 @@ pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: 
             if !bullet_hits_enemy(b, e) {
                 continue;
             }
-            let mut damage = b.damage * e.damage_mul() * overload_mul;
+            let mut damage = b.damage * e.damage_mul() * overload_mul * combo_dmg * endless_bonus;
+            // 副武器递减（主武器和敌方子弹不受影响）
+            if b.source != HitSource::MainGun && b.source != HitSource::Enemy {
+                damage *= sub_penalty;
+            }
             if e.static_mark && !b.is_crit && b.source != HitSource::Enemy {
                 damage *= crit_mul;
                 b.is_crit = true;
