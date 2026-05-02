@@ -138,41 +138,56 @@ impl Bullet {
         }
     }
 
-    pub fn draw(&self, ox: f32, oy: f32) {
-        let c = if self.from_player {
+    /// 子弹的“代表色”，外部（如 fx.trail）可以借这个值来生成同色拖尾。
+    pub fn tint(&self) -> Color {
+        if self.from_player {
             if self.is_crit {
                 Color::from_rgba(255, 230, 90, 255)
             } else if matches!(self.source, HitSource::Wave) {
-                Color::from_rgba(120, 255, 200, 255) // Wave: 青绿
+                Color::from_rgba(120, 255, 200, 255)
             } else if matches!(self.source, HitSource::Reflector) {
-                Color::from_rgba(255, 255, 255, 255) // Reflector: 亮白
+                Color::from_rgba(255, 255, 255, 255)
             } else if self.homing {
                 Color::from_rgba(255, 200, 120, 255)
             } else {
                 Color::from_rgba(155, 240, 255, 255)
             }
+        } else if self.wave_amp > 0.0 {
+            Color::from_rgba(92, 240, 210, 255)
+        } else if self.h >= 18.0 {
+            Color::from_rgba(255, 206, 96, 255)
+        } else if self.w >= 12.0 {
+            Color::from_rgba(255, 158, 76, 255)
         } else {
-            if self.wave_amp > 0.0 {
-                Color::from_rgba(92, 240, 210, 255)
-            } else if self.h >= 18.0 {
-                Color::from_rgba(255, 206, 96, 255)
-            } else if self.w >= 12.0 {
-                Color::from_rgba(255, 158, 76, 255)
-            } else {
-                Color::from_rgba(255, 85, 119, 255)
-            }
-        };
-        let mut g = c;
-        g.a = if self.is_crit { 0.6 } else { 0.35 };
-        let glow_r = if self.is_crit {
-            self.h * 0.85
-        } else {
-            self.h * 0.55
-        };
+            Color::from_rgba(255, 85, 119, 255)
+        }
+    }
+
+    pub fn draw(&self, ox: f32, oy: f32) {
+        let c = self.tint();
         let sx = self.x + ox;
         let sy = self.y + oy;
         let enemy_wave = !self.from_player && self.wave_amp > 0.0;
-        draw_circle(sx, sy, if enemy_wave { glow_r * 1.25 } else { glow_r }, g);
+
+        // 多层柔光：从外到内三层，模拟 emissive halo
+        let glow_r = if self.is_crit {
+            self.h * 0.95
+        } else {
+            self.h * 0.65
+        };
+        draw_circle(
+            sx,
+            sy,
+            if enemy_wave { glow_r * 1.6 } else { glow_r * 1.5 },
+            with_alpha(c, if self.is_crit { 0.18 } else { 0.10 }),
+        );
+        draw_circle(
+            sx,
+            sy,
+            if enemy_wave { glow_r * 1.15 } else { glow_r },
+            with_alpha(c, if self.is_crit { 0.45 } else { 0.30 }),
+        );
+
         let w = if self.is_crit { self.w * 1.4 } else { self.w };
         if enemy_wave {
             draw_circle(sx, sy, self.w * 0.85, c);
@@ -183,7 +198,14 @@ impl Bullet {
             draw_circle_lines(sx, sy, self.w * 0.72, 2.0, with_alpha(c, 0.45));
             draw_circle_lines(sx, sy, self.w * 1.05, 1.5, with_alpha(c, 0.28));
         } else {
+            // 实心条 + 顶端高亮，强化“激光柱”观感
             draw_rectangle(sx - w * 0.5, sy - self.h * 0.5, w, self.h, c);
+            let tip_y = if self.from_player {
+                sy - self.h * 0.5
+            } else {
+                sy + self.h * 0.5
+            };
+            draw_circle(sx, tip_y, w * 0.9, with_alpha(WHITE, 0.7));
         }
     }
 }

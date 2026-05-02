@@ -25,6 +25,12 @@ impl Chain {
     fn jumps(&self) -> usize {
         1 + self.level as usize
     }
+    fn evo_jumps_bonus(evo: bool) -> usize {
+        if evo { 2 } else { 0 }
+    }
+    fn evo_dmg_mul(evo: bool) -> f32 {
+        if evo { 1.4 } else { 1.0 }
+    }
     fn range(&self) -> f32 {
         140.0 + self.level as f32 * 10.0
     }
@@ -57,12 +63,15 @@ impl SubWeapon for Chain {
         enemies: &mut [Enemy],
         _bullets: &mut Vec<Bullet>,
         fx: &mut Fx,
+        damage_acc: &mut [f32; 9],
     ) {
         if t - self.last_shot < self.interval() {
             return;
         }
         self.last_shot = t;
-        let max_jumps = self.jumps();
+        let evo = player.perks.evo_chain;
+        let max_jumps = self.jumps() + Self::evo_jumps_bonus(evo);
+        let dmg_evo_mul = Self::evo_dmg_mul(evo);
         let jump_range = self.range();
         let color = Color::from_rgba(150, 220, 255, 255);
 
@@ -92,9 +101,11 @@ impl SubWeapon for Chain {
             let Some(idx) = best else {
                 break;
             };
-            let (dmg, _crit) = roll_crit(player, self.damage_mul());
+            let (dmg, _crit) = roll_crit(player, self.damage_mul() * dmg_evo_mul);
             let e = &mut enemies[idx];
-            e.hp -= dmg * e.damage_mul();
+            let applied = dmg * e.damage_mul();
+            e.hp -= applied;
+            damage_acc[crate::entity::HitSource::Chain as usize] += applied;
             e.hit_flash = 0.08;
             e.last_hit = crate::entity::HitSource::Chain;
             // Resonance: Wave 标记触发 +2 额外跳（不消耗主跳数）
@@ -129,9 +140,11 @@ impl SubWeapon for Chain {
                     }
                 }
                 if let Some(jdx) = best2 {
-                    let (bdmg, _) = roll_crit(player, self.damage_mul());
+                    let (bdmg, _) = roll_crit(player, self.damage_mul() * dmg_evo_mul);
                     let ej = &mut enemies[jdx];
-                    ej.hp -= bdmg * ej.damage_mul();
+                    let applied = bdmg * ej.damage_mul();
+                    ej.hp -= applied;
+                    damage_acc[crate::entity::HitSource::Chain as usize] += applied;
                     ej.hit_flash = 0.08;
                     ej.last_hit = crate::entity::HitSource::Chain;
                     fx.bolt(
@@ -175,7 +188,8 @@ mod tests {
         let mut bullets = Vec::new();
         let mut fx = Fx::default();
 
-        chain.tick(0.0, 2.0, &player, &mut enemies, &mut bullets, &mut fx);
+        let mut acc = [0.0_f32; 9];
+        chain.tick(0.0, 2.0, &player, &mut enemies, &mut bullets, &mut fx, &mut acc);
 
         assert!(enemies[0].hp < hp);
     }

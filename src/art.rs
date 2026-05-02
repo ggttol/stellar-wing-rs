@@ -21,27 +21,85 @@ fn with_alpha(mut c: Color, a: f32) -> Color {
     c
 }
 
-pub fn draw_player_ship(ship: ShipType, x: f32, y: f32, w: f32, h: f32, t: f32) {
-    let (body, trim, canopy, engine) = match ship {
-        ShipType::Vanguard => (
+/// 飞船涂装表：(body, trim, canopy, engine)。第 0 套是默认，1/2 是解锁皮肤。
+pub fn ship_palette(ship: ShipType, variant: u8) -> (Color, Color, Color, Color) {
+    match (ship, variant) {
+        // —— Vanguard ——
+        (ShipType::Vanguard, 0) => (
             rgba(196, 227, 255, 255),
             rgba(0, 205, 255, 255),
             rgba(255, 208, 102, 255),
             rgba(110, 248, 255, 255),
         ),
-        ShipType::Striker => (
+        (ShipType::Vanguard, 1) => (
+            // Crimson：深红装甲 + 金色衬边
+            rgba(255, 196, 188, 255),
+            rgba(220, 60, 80, 255),
+            rgba(255, 230, 110, 255),
+            rgba(255, 130, 90, 255),
+        ),
+        (ShipType::Vanguard, _) => (
+            // Voidshade：石墨灰 + 紫色辉光
+            rgba(110, 116, 130, 255),
+            rgba(170, 100, 240, 255),
+            rgba(255, 200, 110, 255),
+            rgba(180, 130, 255, 255),
+        ),
+        // —— Striker ——
+        (ShipType::Striker, 0) => (
             rgba(227, 240, 255, 255),
             rgba(30, 255, 197, 255),
             rgba(120, 255, 240, 255),
             rgba(68, 225, 255, 255),
         ),
-        ShipType::Engineer => (
+        (ShipType::Striker, 1) => (
+            // Sunburst：明黄机身 + 暖橙
+            rgba(255, 240, 180, 255),
+            rgba(255, 170, 60, 255),
+            rgba(255, 110, 60, 255),
+            rgba(255, 200, 100, 255),
+        ),
+        (ShipType::Striker, _) => (
+            // Frostbyte：冰蓝 + 银白
+            rgba(220, 240, 255, 255),
+            rgba(120, 200, 255, 255),
+            rgba(180, 240, 255, 255),
+            rgba(160, 220, 255, 255),
+        ),
+        // —— Engineer ——
+        (ShipType::Engineer, 0) => (
             rgba(238, 230, 255, 255),
             rgba(170, 140, 255, 255),
             rgba(255, 217, 130, 255),
             rgba(125, 249, 255, 255),
         ),
-    };
+        (ShipType::Engineer, 1) => (
+            // Verdant：森林绿 + 青柠
+            rgba(220, 250, 200, 255),
+            rgba(80, 200, 110, 255),
+            rgba(220, 255, 130, 255),
+            rgba(160, 230, 130, 255),
+        ),
+        (ShipType::Engineer, _) => (
+            // Obsidian：黑底 + 蓝紫光
+            rgba(100, 110, 140, 255),
+            rgba(100, 130, 230, 255),
+            rgba(180, 200, 255, 255),
+            rgba(160, 180, 255, 255),
+        ),
+    }
+}
+
+pub fn draw_player_ship_skin(
+    ship: ShipType,
+    variant: u8,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    t: f32,
+) {
+    let (body, trim, canopy, engine) = ship_palette(ship, variant);
     let dark = tint(body, 0.42);
     let mid = tint(body, 0.75);
     let glow = with_alpha(trim, 0.22 + (t * 4.0).sin().abs() * 0.10);
@@ -146,14 +204,19 @@ pub fn draw_player_ship(ship: ShipType, x: f32, y: f32, w: f32, h: f32, t: f32) 
     }
 }
 
-pub fn draw_player_preview(ship: ShipType, x: f32, y: f32, scale: f32, t: f32) {
-    let aura = match ship {
-        ShipType::Vanguard => rgba(0, 212, 255, 90),
-        ShipType::Striker => rgba(0, 255, 194, 90),
-        ShipType::Engineer => rgba(170, 140, 255, 90),
-    };
+pub fn draw_player_preview_skin(
+    ship: ShipType,
+    variant: u8,
+    x: f32,
+    y: f32,
+    scale: f32,
+    t: f32,
+) {
+    let (_, trim, _, _) = ship_palette(ship, variant);
+    let mut aura = trim;
+    aura.a = 0.35;
     draw_circle(x, y + 6.0, 34.0 * scale, aura);
-    draw_player_ship(ship, x, y, 58.0 * scale, 72.0 * scale, t);
+    draw_player_ship_skin(ship, variant, x, y, 58.0 * scale, 72.0 * scale, t);
 }
 
 pub fn draw_enemy_ship(kind: EnemyKind, x: f32, y: f32, w: f32, h: f32, base: Color, hp_pct: f32) {

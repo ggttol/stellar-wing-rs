@@ -2,7 +2,7 @@
 
 use macroquad::prelude::*;
 
-use crate::art::draw_player_preview;
+use crate::art::draw_player_preview_skin;
 use crate::audio::Audio;
 use crate::chapter;
 use crate::config::CFG;
@@ -292,7 +292,9 @@ fn draw_hangar(
     }
 
     let bob = (t_acc * 1.8).sin() * 4.0;
-    draw_player_preview(ship, cx, beam_y - 14.0 + bob, 1.35, t_acc);
+    let ship_idx = ShipType::ALL.iter().position(|s| *s == ship).unwrap_or(0);
+    let skin = save.ship_skin_choice[ship_idx];
+    draw_player_preview_skin(ship, skin, cx, beam_y - 14.0 + bob, 1.35, t_acc);
 
     if !unlocked {
         // 锁定遮罩
@@ -467,10 +469,22 @@ pub fn draw_menu(
 
     draw_title(cx, 86.0, t_acc, font, lang);
     draw_high_score_chip(cx, 142.0, save.high, font, lang);
-    // Stardust 余额（菜单角标）
+    // Stardust 余额 + 当前难度（菜单角标）
     let star_text = format!("✦ {}", save.stardust);
     let ds = mt(&star_text, 12, font);
     dt(&star_text, cx - ds.width * 0.5, 158.0, 12.0, ICE_CYAN, font);
+    // 难度提示
+    let diff_label = format!(
+        "[N] {}",
+        t(World::difficulty_label(save.difficulty), lang)
+    );
+    let dd = mt(&diff_label, 11, font);
+    let diff_color = match save.difficulty {
+        0 => MUTED,
+        1 => GOLD,
+        _ => Color::from_rgba(255, 90, 110, 255),
+    };
+    dt(&diff_label, cx - dd.width * 0.5, 174.0, 11.0, diff_color, font);
 
     if !save.leaderboard.is_empty() {
         draw_leaderboard(20.0, 168.0, CFG.w - 40.0, save, font, lang);
@@ -500,17 +514,62 @@ pub fn draw_menu(
 
     draw_launch_prompt(cx, CFG.h - 96.0, t_acc, font, lang);
 
-    // 进入天赋页的提示
-    let talents_hint = format!("[T]  {}", t("TALENTS", lang));
-    let dh = mt(&talents_hint, 12, font);
-    dt(
-        &talents_hint,
-        cx - dh.width * 0.5,
-        CFG.h - 70.0,
-        12.0,
-        alpha(GOLD, 0.8 + (t_acc * 2.5).sin() * 0.15),
-        font,
-    );
+    // 当日挑战分数（如果今天打过）
+    let today = crate::save::today();
+    if save.daily_date == today && save.daily_high > 0 {
+        let line = format!("{}: {}", t("Daily best", lang), save.daily_high);
+        let dlim = mt(&line, 11, font);
+        dt(
+            &line,
+            cx - dlim.width * 0.5,
+            190.0,
+            11.0,
+            alpha(GOLD, 0.85),
+            font,
+        );
+    }
+
+    // 入口提示行（两行，键散开）
+    let hints_a: [(&str, &str, Color); 2] = [
+        ("[T]", t("TALENTS", lang), GOLD),
+        ("[O]", t("SETTINGS", lang), ICE_CYAN),
+    ];
+    let hints_b: [(&str, &str, Color); 3] = [
+        ("[H]", t("ACHIEVEMENTS", lang), GOLD),
+        ("[C]", t("CODEX", lang), ICE_CYAN),
+        ("[Y]", t("DAILY", lang), MAGENTA),
+    ];
+    fn row_w(items: &[(&str, &str, Color)], font: Option<&Font>) -> f32 {
+        let mut w = 0.0;
+        for (k, l, _) in items {
+            let kd = mt(k, 11, font);
+            let ld = mt(l, 11, font);
+            w += kd.width + 4.0 + ld.width + 14.0;
+        }
+        (w - 14.0).max(0.0)
+    }
+    let pulse_a = 0.8 + (t_acc * 2.5).sin() * 0.15;
+    let pulse_b = 0.8 + (t_acc * 2.5 + 1.5).sin() * 0.15;
+    let row_a = row_w(&hints_a, font);
+    let mut x = cx - row_a * 0.5;
+    let y_a = CFG.h - 86.0;
+    for (k, l, c) in hints_a {
+        let kd = mt(k, 11, font);
+        dt(k, x, y_a, 11.0, alpha(c, pulse_a), font);
+        let ld = mt(l, 11, font);
+        dt(l, x + kd.width + 4.0, y_a, 11.0, alpha(SOFT_WHITE, 0.85), font);
+        x += kd.width + 4.0 + ld.width + 14.0;
+    }
+    let row_b = row_w(&hints_b, font);
+    let mut x = cx - row_b * 0.5;
+    let y_b = CFG.h - 70.0;
+    for (k, l, c) in hints_b {
+        let kd = mt(k, 11, font);
+        dt(k, x, y_b, 11.0, alpha(c, pulse_b), font);
+        let ld = mt(l, 11, font);
+        dt(l, x + kd.width + 4.0, y_b, 11.0, alpha(SOFT_WHITE, 0.85), font);
+        x += kd.width + 4.0 + ld.width + 14.0;
+    }
 
     draw_key_row(cx, CFG.h - 38.0, audio, font, lang);
 
@@ -569,6 +628,20 @@ pub fn draw_play_hud(world: &World, high: u32, font: Option<&Font>, lang: Lang) 
         Color::from_rgba(180, 200, 220, 255),
         font,
     );
+    // 每日挑战标签
+    if world.daily_mode {
+        let lbl = t("DAILY", lang);
+        let dl = mt(lbl, 11, font);
+        let pulse = 0.65 + (world.run_time * 3.0).sin() * 0.20;
+        dt(
+            lbl,
+            CFG.w * 0.5 - dl.width * 0.5,
+            42.0,
+            11.0,
+            alpha(GOLD, pulse),
+            font,
+        );
+    }
 
     draw_resonance(world, font, lang);
 
@@ -720,32 +793,37 @@ pub fn draw_play_hud(world: &World, high: u32, font: Option<&Font>, lang: Lang) 
     );
 }
 
-pub fn draw_pause(font: Option<&Font>, lang: Lang) {
+pub fn draw_pause(world: &World, font: Option<&Font>, lang: Lang) {
     draw_rectangle(0.0, 0.0, CFG.w, CFG.h, Color::from_rgba(0, 5, 20, 200));
     let cx = CFG.w * 0.5;
     let title = t("PAUSED", lang);
-    let d = mt(title, 48, font);
+    let d = mt(title, 42, font);
     dt(
         title,
         cx - d.width * 0.5,
-        CFG.h * 0.4,
-        48.0,
+        90.0,
+        42.0,
         Color::from_rgba(0, 212, 255, 255),
         font,
     );
+
+    // build summary panel
+    draw_build_summary(world, font, lang, 30.0, 150.0, CFG.w - 60.0);
+
+    // 提示
     let lines = [t("P / ESC — resume", lang), t("Q — quit to menu", lang)];
-    let mut y = CFG.h * 0.55;
+    let mut y = CFG.h - 80.0;
     for l in lines {
-        let d2 = mt(l, 18, font);
+        let d2 = mt(l, 16, font);
         dt(
             l,
             cx - d2.width * 0.5,
             y,
-            18.0,
+            16.0,
             Color::from_rgba(180, 200, 220, 255),
             font,
         );
-        y += 30.0;
+        y += 24.0;
     }
 }
 
@@ -815,9 +893,12 @@ pub fn draw_gameover(
         );
     }
 
+    // —— 局内 build 总览（伤害分布 / 武器 / perks）——
+    draw_build_summary(world, font, lang, 30.0, 360.0, CFG.w - 60.0);
+
     // —— 奖励 / 解锁面板 ————————————————————————————
     if let Some(r) = reward {
-        let panel_y = 380.0;
+        let panel_y = 568.0;
         let panel_h = 100.0;
         draw_console_panel(
             20.0,
@@ -1167,6 +1248,642 @@ pub fn draw_talents(save: &Save, cursor: usize, t_acc: f32, font: Option<&Font>,
     dt(hint, cx - dh.width * 0.5, CFG.h - 28.0, 12.0, MUTED, font);
 }
 
+/// 设置页可调节的总行数：Master / BGM / SFX / Shake / Mute / Fullscreen。
+pub const SETTINGS_ROWS: usize = 6;
+
+/// 设置页：音量、震动、静音、全屏。
+pub fn draw_settings(
+    save: &Save,
+    audio: &Audio,
+    cursor: usize,
+    t_acc: f32,
+    font: Option<&Font>,
+    lang: Lang,
+) {
+    let cx = CFG.w * 0.5;
+
+    let title = t("SETTINGS", lang);
+    let dim = mt(title, 36, font);
+    dt(title, cx - dim.width * 0.5, 70.0, 36.0, ICE_CYAN, font);
+    let sub = t("Volume / Effects / Display", lang);
+    let ds = mt(sub, 12, font);
+    dt(sub, cx - ds.width * 0.5, 92.0, 12.0, MUTED, font);
+
+    let row_h = 56.0;
+    let list_x = 60.0;
+    let list_w = CFG.w - 120.0;
+    let list_y = 150.0;
+
+    let rows: [(&str, SettingValue); SETTINGS_ROWS] = [
+        ("Master Volume", SettingValue::Slider(save.master_vol)),
+        ("Music Volume", SettingValue::Slider(save.bgm_vol)),
+        ("SFX Volume", SettingValue::Slider(save.sfx_vol)),
+        (
+            "Screen Shake",
+            SettingValue::Slider(save.screen_shake / 1.5),
+        ),
+        (
+            "Audio Mute",
+            SettingValue::Toggle(audio.muted, "On", "Off"),
+        ),
+        (
+            "Fullscreen",
+            SettingValue::Toggle(save.fullscreen, "On", "Off"),
+        ),
+    ];
+
+    for (i, (label, value)) in rows.iter().enumerate() {
+        let y = list_y + i as f32 * row_h;
+        let selected = i == cursor;
+
+        let fill = if selected {
+            Color::new(0.06, 0.10, 0.18, 1.0)
+        } else {
+            Color::new(0.020, 0.035, 0.075, 1.0)
+        };
+        draw_rectangle(list_x, y, list_w, row_h - 8.0, fill);
+        let edge_c = if selected {
+            alpha(NEON_CYAN, 0.85)
+        } else {
+            alpha(PANEL_EDGE, 0.30)
+        };
+        draw_rectangle_lines(list_x, y, list_w, row_h - 8.0, 1.0, edge_c);
+        if selected {
+            draw_corner_brackets(list_x, y, list_w, row_h - 8.0, 10.0, 2.0, NEON_CYAN);
+        }
+
+        dt(t(label, lang), list_x + 16.0, y + 22.0, 14.0, ICE_CYAN, font);
+
+        // 右侧：滑条 / 文字
+        let bar_w = 240.0;
+        let bar_h = 8.0;
+        let bar_x = list_x + list_w - bar_w - 60.0;
+        let bar_y = y + 24.0;
+        match value {
+            SettingValue::Slider(v) => {
+                let v = v.clamp(0.0, 1.0);
+                draw_rectangle(bar_x, bar_y, bar_w, bar_h, Color::new(0.06, 0.10, 0.18, 1.0));
+                let fc = if selected { GOLD } else { ICE_CYAN };
+                draw_rectangle(bar_x, bar_y, bar_w * v, bar_h, fc);
+                draw_rectangle_lines(bar_x, bar_y, bar_w, bar_h, 1.0, alpha(MUTED, 0.5));
+                let pct = (v * 100.0).round() as u32;
+                let pct_label = format!("{}%", pct);
+                let dp = mt(&pct_label, 12, font);
+                dt(
+                    &pct_label,
+                    list_x + list_w - dp.width - 14.0,
+                    bar_y + 8.0,
+                    12.0,
+                    SOFT_WHITE,
+                    font,
+                );
+            }
+            SettingValue::Toggle(on, on_label, off_label) => {
+                let label_str = t(if *on { on_label } else { off_label }, lang);
+                let dl = mt(label_str, 14, font);
+                let color = if *on { GOLD } else { MUTED };
+                dt(
+                    label_str,
+                    list_x + list_w - dl.width - 14.0,
+                    bar_y + 8.0,
+                    14.0,
+                    color,
+                    font,
+                );
+            }
+        }
+    }
+
+    // 底部提示
+    let pulse = 0.7 + (t_acc * 3.5).sin() * 0.2;
+    let hint = t("↑↓ select   ←→ adjust   ENTER toggle   ESC back", lang);
+    let dh = mt(hint, 12, font);
+    dt(
+        hint,
+        cx - dh.width * 0.5,
+        CFG.h - 28.0,
+        12.0,
+        alpha(ICE_CYAN, pulse),
+        font,
+    );
+}
+
+enum SettingValue {
+    Slider(f32),
+    Toggle(bool, &'static str, &'static str),
+}
+
+/// 章节分叉选择页：在 boss 死亡 / 章节切换瞬间弹出，2 选 1 修饰。
+pub fn draw_chapter_choice(
+    world: &World,
+    opts: &[crate::world::ChapterMod; 2],
+    cursor: usize,
+    t_acc: f32,
+    font: Option<&Font>,
+    lang: Lang,
+) {
+    draw_rectangle(0.0, 0.0, CFG.w, CFG.h, Color::from_rgba(0, 5, 20, 220));
+
+    let cx = CFG.w * 0.5;
+    let title = t("CHOOSE YOUR PATH", lang);
+    let dim = mt(title, 26, font);
+    dt(title, cx - dim.width * 0.5, 130.0, 26.0, GOLD, font);
+
+    let chap = chapter::get(world.chapter_idx);
+    let chap_label = if chap.endless {
+        format!("◆ {} ◆", t("ENDLESS", lang))
+    } else {
+        format!("{} {} / {}", t("CHAPTER", lang), chap.id, chapter::total())
+    };
+    let dlim = mt(&chap_label, 12, font);
+    dt(&chap_label, cx - dlim.width * 0.5, 156.0, 12.0, ICE_CYAN, font);
+
+    let card_w = 200.0;
+    let card_h = 200.0;
+    let gap = 24.0;
+    let total_w = card_w * 2.0 + gap;
+    let start_x = cx - total_w * 0.5;
+    let card_y = 200.0;
+
+    for (i, opt) in opts.iter().enumerate() {
+        let x = start_x + i as f32 * (card_w + gap);
+        let selected = i == cursor;
+        let pulse = if selected {
+            0.7 + (t_acc * 6.0).sin() * 0.2
+        } else {
+            0.4
+        };
+        let bg = if selected {
+            Color::from_rgba(20, 35, 60, 240)
+        } else {
+            Color::from_rgba(10, 20, 40, 220)
+        };
+        draw_rectangle(x, card_y, card_w, card_h, bg);
+        let edge = if selected { GOLD } else { alpha(MUTED, 0.5) };
+        draw_rectangle_lines(x, card_y, card_w, card_h, if selected { 3.0 } else { 1.5 }, edge);
+        if selected {
+            draw_corner_brackets(x, card_y, card_w, card_h, 14.0, 2.0, GOLD);
+        }
+
+        // 路线编号
+        dt(
+            &format!("{}", i + 1),
+            x + 12.0,
+            card_y + 22.0,
+            14.0,
+            alpha(MUTED, pulse),
+            font,
+        );
+
+        // 标题
+        let nm = t(opt.name(), lang);
+        let dn = mt(nm, 22, font);
+        dt(
+            nm,
+            x + (card_w - dn.width) * 0.5,
+            card_y + 70.0,
+            22.0,
+            ICE_CYAN,
+            font,
+        );
+
+        // 描述
+        let desc = t(opt.desc(), lang);
+        let dd = mt(desc, 11, font);
+        dt(
+            desc,
+            x + (card_w - dd.width) * 0.5,
+            card_y + 110.0,
+            11.0,
+            SOFT_WHITE,
+            font,
+        );
+
+        if selected {
+            let hint = t("Enter / 1·2", lang);
+            let dh = mt(hint, 11, font);
+            dt(
+                hint,
+                x + (card_w - dh.width) * 0.5,
+                card_y + card_h - 16.0,
+                11.0,
+                alpha(GOLD, pulse),
+                font,
+            );
+        }
+    }
+}
+
+/// 成就页：列出所有成就，按已解锁 / 未解锁着色。
+pub fn draw_achievements(
+    save: &Save,
+    cursor: usize,
+    t_acc: f32,
+    font: Option<&Font>,
+    lang: Lang,
+) {
+    let cx = CFG.w * 0.5;
+    let title = t("ACHIEVEMENTS", lang);
+    let dim = mt(title, 32, font);
+    dt(title, cx - dim.width * 0.5, 60.0, 32.0, ICE_CYAN, font);
+
+    let total = crate::achievements::ACHIEVEMENTS.len();
+    let unlocked = (0..total)
+        .filter(|i| crate::achievements::is_unlocked(save, *i as u8))
+        .count();
+    let prog = format!("{} / {}", unlocked, total);
+    let dp = mt(&prog, 14, font);
+    dt(&prog, cx - dp.width * 0.5, 84.0, 14.0, GOLD, font);
+
+    // 列表
+    let row_h = 38.0;
+    let visible = 12_usize;
+    let start = if cursor < visible / 2 {
+        0
+    } else {
+        (cursor - visible / 2).min(total.saturating_sub(visible))
+    };
+    let list_x = 30.0;
+    let list_w = CFG.w - 60.0;
+    let list_y = 110.0;
+
+    for i in 0..visible.min(total) {
+        let idx = start + i;
+        if idx >= total {
+            break;
+        }
+        let a = &crate::achievements::ACHIEVEMENTS[idx];
+        let y = list_y + i as f32 * row_h;
+        let is_done = crate::achievements::is_unlocked(save, a.id);
+        let selected = idx == cursor;
+
+        let fill = if selected {
+            Color::new(0.06, 0.10, 0.18, 1.0)
+        } else {
+            Color::new(0.020, 0.035, 0.075, 0.9)
+        };
+        draw_rectangle(list_x, y, list_w, row_h - 4.0, fill);
+        let edge = if selected {
+            alpha(NEON_CYAN, 0.85)
+        } else if is_done {
+            alpha(GOLD, 0.55)
+        } else {
+            alpha(MUTED, 0.30)
+        };
+        draw_rectangle_lines(list_x, y, list_w, row_h - 4.0, 1.0, edge);
+
+        // 状态星
+        let star = if is_done { "★" } else { "☆" };
+        let sc = if is_done {
+            GOLD
+        } else {
+            alpha(MUTED, 0.6)
+        };
+        dt(star, list_x + 12.0, y + 22.0, 18.0, sc, font);
+
+        let name = if lang == Lang::Zh { a.name_zh } else { a.name_en };
+        let desc = if lang == Lang::Zh { a.desc_zh } else { a.desc_en };
+        let name_color = if is_done { ICE_CYAN } else { SOFT_WHITE };
+        dt(name, list_x + 36.0, y + 16.0, 13.0, name_color, font);
+        dt(desc, list_x + 36.0, y + 30.0, 11.0, MUTED, font);
+
+        // 奖励
+        if a.stardust > 0 {
+            let rew = format!("✦ {}", a.stardust);
+            let dr = mt(&rew, 11, font);
+            dt(
+                &rew,
+                list_x + list_w - dr.width - 14.0,
+                y + 22.0,
+                11.0,
+                if is_done { alpha(GOLD, 0.6) } else { GOLD },
+                font,
+            );
+        }
+    }
+
+    // 底部提示
+    let hint = t("↑↓ select   ESC back", lang);
+    let dh = mt(hint, 12, font);
+    let pulse = 0.7 + (t_acc * 3.5).sin() * 0.2;
+    dt(
+        hint,
+        cx - dh.width * 0.5,
+        CFG.h - 28.0,
+        12.0,
+        alpha(ICE_CYAN, pulse),
+        font,
+    );
+}
+
+/// 图鉴页：tab 0 = 敌人、1 = Boss 修饰、2 = 副武器
+pub fn draw_codex(save: &Save, tab: u8, cursor: usize, t_acc: f32, font: Option<&Font>, lang: Lang) {
+    let cx = CFG.w * 0.5;
+    let title = t("CODEX", lang);
+    let dim = mt(title, 32, font);
+    dt(title, cx - dim.width * 0.5, 60.0, 32.0, ICE_CYAN, font);
+
+    // tab 选择
+    let tabs = [t("ENEMIES", lang), t("BOSS MODS", lang), t("WEAPONS", lang)];
+    let tab_y = 100.0;
+    let tab_w = (CFG.w - 60.0) / 3.0;
+    for (i, label) in tabs.iter().enumerate() {
+        let tx = 30.0 + i as f32 * tab_w;
+        let is_sel = i as u8 == tab;
+        let edge = if is_sel { NEON_CYAN } else { alpha(MUTED, 0.4) };
+        draw_rectangle_lines(tx + 4.0, tab_y, tab_w - 8.0, 26.0, 1.5, edge);
+        let dim2 = mt(label, 13, font);
+        let cc = if is_sel { ICE_CYAN } else { MUTED };
+        dt(
+            label,
+            tx + tab_w * 0.5 - dim2.width * 0.5,
+            tab_y + 18.0,
+            13.0,
+            cc,
+            font,
+        );
+    }
+
+    // 内容区
+    let list_x = 30.0;
+    let list_y = 144.0;
+    let list_w = CFG.w * 0.42;
+    let detail_x = list_x + list_w + 12.0;
+    let detail_w = CFG.w - detail_x - 30.0;
+
+    // 数据：根据 tab 决定项目集
+    let items: Vec<(usize, &'static str, &'static str, bool)> = match tab {
+        0 => {
+            // 9 种 EnemyKind
+            let kinds = [
+                ("Small", "Lightweight scout"),
+                ("Medium", "Mid-tier shooter"),
+                ("Large", "Heavy armored"),
+                ("Boss", "Chapter boss"),
+                ("Kamikaze", "Suicide ram"),
+                ("Strafer", "Side-sweeper"),
+                ("Sniper", "High-velocity shots"),
+                ("Weaver", "Sine-wave bullets"),
+                ("MineLayer", "Slow heavy bombs"),
+            ];
+            kinds
+                .iter()
+                .enumerate()
+                .map(|(i, (n, d))| {
+                    let unlocked = (save.codex_enemies & (1u32 << i)) != 0;
+                    (i, *n, *d, unlocked)
+                })
+                .collect()
+        }
+        1 => {
+            let mods = [
+                ("Frenzied", "Faster fire rate"),
+                ("Bulwark", "Heavy armor"),
+                ("Summoner", "Calls reinforcements"),
+                ("Storm Core", "Spinning bullet rings"),
+                ("Phantom", "Teleports"),
+                ("Hydra", "Splits at 50%"),
+            ];
+            mods.iter()
+                .enumerate()
+                .map(|(i, (n, d))| {
+                    let unlocked = (save.codex_bosses & (1u32 << i)) != 0;
+                    (i, *n, *d, unlocked)
+                })
+                .collect()
+        }
+        _ => {
+            let weapons = [
+                ("Homing Missile", "Auto-lock target"),
+                ("Orbit Drone", "Orbit drones aim at nearby targets"),
+                ("Pulse Laser", "Tracking beam, sustained DPS"),
+                ("Chain Bolt", "Long-range lightning jumps targets"),
+                ("Void Rift", "Hunting damage field"),
+                ("Wave Cannon", "Sine-wave bullets sweep the field"),
+                ("Reflector", "Aimed ricochet shots"),
+            ];
+            weapons
+                .iter()
+                .enumerate()
+                .map(|(i, (n, d))| {
+                    let unlocked = (save.codex_weapons & (1u32 << i)) != 0;
+                    (i, *n, *d, unlocked)
+                })
+                .collect()
+        }
+    };
+
+    let row_h = 30.0;
+    for (i, (_idx, name, _desc, unlocked)) in items.iter().enumerate() {
+        let y = list_y + i as f32 * row_h;
+        let selected = i == cursor;
+        let fill = if selected {
+            Color::new(0.06, 0.10, 0.18, 1.0)
+        } else {
+            Color::new(0.020, 0.035, 0.075, 0.9)
+        };
+        draw_rectangle(list_x, y, list_w, row_h - 4.0, fill);
+        let edge = if selected {
+            NEON_CYAN
+        } else {
+            alpha(MUTED, 0.3)
+        };
+        draw_rectangle_lines(list_x, y, list_w, row_h - 4.0, 1.0, edge);
+        let display_name = if *unlocked {
+            t(name, lang).to_string()
+        } else {
+            "??? ???".to_string()
+        };
+        let nc = if *unlocked { ICE_CYAN } else { MUTED };
+        dt(&display_name, list_x + 12.0, y + 18.0, 13.0, nc, font);
+    }
+
+    // 详情面板
+    if let Some((_, name, desc, unlocked)) = items.get(cursor) {
+        draw_console_panel(
+            detail_x,
+            list_y,
+            detail_w,
+            260.0,
+            Some(t("DETAIL", lang)),
+            font,
+        );
+        if *unlocked {
+            dt(t(name, lang), detail_x + 14.0, list_y + 28.0, 16.0, GOLD, font);
+            dt(t(desc, lang), detail_x + 14.0, list_y + 52.0, 12.0, SOFT_WHITE, font);
+        } else {
+            dt("???", detail_x + 14.0, list_y + 30.0, 22.0, MUTED, font);
+            dt(
+                t("Encounter to reveal", lang),
+                detail_x + 14.0,
+                list_y + 60.0,
+                11.0,
+                MUTED,
+                font,
+            );
+        }
+    }
+
+    let hint = t("←→ tab   ↑↓ select   ESC back", lang);
+    let dh = mt(hint, 12, font);
+    let pulse = 0.7 + (t_acc * 3.5).sin() * 0.2;
+    dt(
+        hint,
+        cx - dh.width * 0.5,
+        CFG.h - 28.0,
+        12.0,
+        alpha(ICE_CYAN, pulse),
+        font,
+    );
+}
+
+/// 局内 build 总览：当前主炮/副武器等级、生效 perks、关键属性 + 伤害分布。
+/// 在暂停页和 GameOver 上调用，给玩家"我现在叠了什么"的明确反馈。
+pub fn draw_build_summary(world: &World, font: Option<&Font>, lang: Lang, x: f32, y: f32, w: f32) {
+    // 面板
+    draw_console_panel(x, y, w, 198.0, Some(t("BUILD", lang)), font);
+
+    // 第 1 列：武器
+    let col1 = x + 14.0;
+    let mut yy = y + 18.0;
+    dt(t("Weapons", lang), col1, yy, 12.0, GOLD, font);
+    yy += 16.0;
+    let gun = format!("{}{}", t("Gun Lv", lang), world.weapons.main.level);
+    dt(&gun, col1, yy, 12.0, ICE_CYAN, font);
+    yy += 14.0;
+    for s in &world.weapons.subs {
+        let label = t(pretty_id(s.id()), lang);
+        let txt = format!("{} Lv{}", label, s.level());
+        dt(&txt, col1, yy, 12.0, SOFT_WHITE, font);
+        yy += 14.0;
+    }
+
+    // 第 2 列：Perks + 关键数值
+    let col2 = x + w * 0.36;
+    yy = y + 18.0;
+    dt(t("Perks", lang), col2, yy, 12.0, MAGENTA, font);
+    yy += 16.0;
+    let perks = &world.player.perks;
+    let mut perk_lines: Vec<&str> = Vec::new();
+    if perks.heat_lock {
+        perk_lines.push(t("Heat Lock", lang));
+    }
+    if perks.static_mark {
+        perk_lines.push(t("Static Mark", lang));
+    }
+    if perks.drone_relay {
+        perk_lines.push(t("Drone Relay", lang));
+    }
+    if perks.gravity_well {
+        perk_lines.push(t("Gravity Well", lang));
+    }
+    if perks.resonance {
+        perk_lines.push(t("Resonance", lang));
+    }
+    if perks.prism {
+        perk_lines.push(t("Prism", lang));
+    }
+    if perk_lines.is_empty() {
+        dt("—", col2, yy, 12.0, MUTED, font);
+    } else {
+        for p in perk_lines {
+            dt(p, col2, yy, 12.0, SOFT_WHITE, font);
+            yy += 14.0;
+        }
+    }
+
+    // 第 3 列：核心属性
+    let col3 = x + w * 0.66;
+    yy = y + 18.0;
+    dt(t("Stats", lang), col3, yy, 12.0, ICE_CYAN, font);
+    yy += 16.0;
+    let st = &world.player.stats;
+    let lines = [
+        format!("{}: ×{:.2}", t("DMG", lang), st.damage_mul),
+        format!("{}: {:.0}%", t("CRIT", lang), st.crit_chance * 100.0),
+        format!("{}: ×{:.2}", t("CDMG", lang), st.crit_mul),
+        format!("{}: {:.0}", t("SPD", lang), st.speed),
+        format!("{}: ×{:.2}", t("XP", lang), st.xp_mul),
+        format!("{}: ×{:.2}", t("SCORE", lang), st.score_mul),
+    ];
+    for line in lines {
+        dt(&line, col3, yy, 12.0, SOFT_WHITE, font);
+        yy += 14.0;
+    }
+
+    // 底部：伤害分布条（占 1 行）
+    let bar_y = y + 156.0;
+    let bar_x = x + 14.0;
+    let bar_w = w - 28.0;
+    let bar_h = 12.0;
+    dt(
+        t("Damage by source", lang),
+        bar_x,
+        bar_y - 4.0,
+        11.0,
+        MUTED,
+        font,
+    );
+    let labels = ["MAIN", "MISL", "DRN", "LSR", "CHN", "RFT", "WAV", "RFL"];
+    let palette = [
+        Color::from_rgba(125, 249, 255, 255),
+        Color::from_rgba(255, 200, 120, 255),
+        Color::from_rgba(0, 212, 255, 255),
+        Color::from_rgba(220, 250, 255, 255),
+        Color::from_rgba(150, 220, 255, 255),
+        Color::from_rgba(160, 100, 255, 255),
+        Color::from_rgba(120, 255, 200, 255),
+        Color::from_rgba(255, 255, 255, 255),
+    ];
+    let total: f32 = world.damage_by_source[..8].iter().sum();
+    let total = total.max(1.0);
+    let mut cur_x = bar_x;
+    draw_rectangle(bar_x, bar_y + 8.0, bar_w, bar_h, Color::new(0.04, 0.07, 0.13, 1.0));
+    for (i, &dmg) in world.damage_by_source[..8].iter().enumerate() {
+        if dmg <= 0.0 {
+            continue;
+        }
+        let frac = dmg / total;
+        let seg_w = bar_w * frac;
+        draw_rectangle(cur_x, bar_y + 8.0, seg_w, bar_h, palette[i]);
+        // 段标签：占比足够大才显示
+        if seg_w > 32.0 {
+            let pct = (frac * 100.0).round() as u32;
+            let lab = format!("{} {}%", labels[i], pct);
+            let dim = mt(&lab, 10, font);
+            if dim.width < seg_w {
+                dt(
+                    &lab,
+                    cur_x + (seg_w - dim.width) * 0.5,
+                    bar_y + 18.0,
+                    10.0,
+                    Color::new(0.04, 0.07, 0.13, 1.0),
+                    font,
+                );
+            }
+        }
+        cur_x += seg_w;
+    }
+
+    // 角落小字：连击 / 击杀
+    let stats_line = format!(
+        "{} {}    {} {}",
+        t("Kills", lang),
+        world.kills,
+        t("Peak", lang),
+        world.max_combo,
+    );
+    let dim = mt(&stats_line, 11, font);
+    dt(
+        &stats_line,
+        x + w - dim.width - 14.0,
+        y + 14.0,
+        11.0,
+        MUTED,
+        font,
+    );
+}
+
 /// 共鸣槽 / 过载状态条（顶部中央，时间 ↓ 下方）。
 fn draw_resonance(world: &World, font: Option<&Font>, lang: Lang) {
     let bar_w = 240.0;
@@ -1342,4 +2059,49 @@ pub fn draw_world(world: &World, t: f32, ox: f32, oy: f32) {
     }
     // 屏幕外敌人指示器
     draw_off_screen_indicators(world);
+}
+
+/// 全屏 vignette + 受击闪屏，覆盖在世界之上、HUD 之下。
+pub fn draw_screen_fx(world: &World, fx: &crate::fx::Fx) {
+    // 受击红闪：alpha 与 damage_flash 成正比
+    if fx.damage_flash > 0.0 {
+        let a = (fx.damage_flash * 0.55).min(0.55);
+        draw_rectangle(0.0, 0.0, CFG.w, CFG.h, Color::new(1.0, 0.18, 0.20, a));
+    }
+
+    // 低血量红色脉冲 vignette
+    if !world.player.dead && world.player.lives <= 1 {
+        let pulse = 0.45 + (world.run_time * 4.5).sin() * 0.25;
+        draw_vignette(Color::new(1.0, 0.10, 0.15, 0.35 * pulse));
+    }
+
+    // 过载金色 vignette
+    if world.synergy.is_overloaded() {
+        let pulse = 0.6 + (world.run_time * 5.0).sin() * 0.15;
+        draw_vignette(Color::new(1.0, 0.78, 0.20, 0.28 * pulse));
+    }
+
+    // SUPER 蓄满时蓝色脉冲，提示玩家可以放
+    if world.super_charge >= 1.0 {
+        let pulse = 0.5 + (world.run_time * 3.0).sin() * 0.20;
+        draw_vignette(Color::new(0.12, 0.85, 1.0, 0.18 * pulse));
+    }
+}
+
+/// 屏幕四边的暗角：靠多个矩形渐变近似实现，避免 shader 依赖。
+fn draw_vignette(c: Color) {
+    let bands = 5usize;
+    let edge = 60.0;
+    for i in 0..bands {
+        let t = (i as f32 + 1.0) / bands as f32;
+        let mut col = c;
+        col.a = c.a * (1.0 - t).powf(1.4);
+        let inset = edge * t;
+        // 上下
+        draw_rectangle(0.0, 0.0, CFG.w, edge - inset, col);
+        draw_rectangle(0.0, CFG.h - (edge - inset), CFG.w, edge - inset, col);
+        // 左右
+        draw_rectangle(0.0, 0.0, edge - inset, CFG.h, col);
+        draw_rectangle(CFG.w - (edge - inset), 0.0, edge - inset, CFG.h, col);
+    }
 }

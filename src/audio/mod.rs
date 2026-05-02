@@ -4,18 +4,20 @@ mod bgm;
 mod sfx;
 mod synth;
 
-use macroquad::audio::{load_sound_from_bytes, play_sound, stop_sound, PlaySoundParams, Sound};
+use macroquad::audio::{
+    load_sound_from_bytes, play_sound, set_sound_volume, stop_sound, PlaySoundParams, Sound,
+};
 
 pub struct Audio {
     pub muted: bool,
     pub vol: f32,
-    sfx_vol: f32,
-    bgm_vol: f32,
+    pub sfx_vol: f32,
+    pub bgm_vol: f32,
 
     // SFX
     shoot: Option<Sound>,
-    hit: Option<Sound>,
-    kill_steps: Vec<Option<Sound>>, // 8 级
+    hit_variants: Vec<Option<Sound>>, // 3 个变体
+    kill_steps: Vec<Option<Sound>>,   // 8 级
     explode_small: Option<Sound>,
     explode_big: Option<Sound>,
     powerup: Option<Sound>,
@@ -43,7 +45,7 @@ pub enum BgmTrack {
 }
 
 impl Audio {
-    pub async fn load(muted: bool) -> Self {
+    pub async fn load(muted: bool, master: f32, sfx: f32, bgm: f32) -> Self {
         // 在启动线程上把所有 PCM 合成到字节流，然后交给 macroquad。
         let kill_bytes: Vec<Vec<u8>> = (0..8).map(sfx::kill_at).collect();
 
@@ -52,14 +54,20 @@ impl Audio {
             kill_steps.push(load(b).await);
         }
 
+        // 3 个 hit 变体，随机播放避免疲劳
+        let mut hit_variants = Vec::with_capacity(3);
+        for k in 0..3 {
+            hit_variants.push(load(&sfx::hit_variant(k)).await);
+        }
+
         Self {
             muted,
-            vol: 0.5,
-            sfx_vol: 1.0,
-            bgm_vol: 0.55,
+            vol: master.clamp(0.0, 1.0),
+            sfx_vol: sfx.clamp(0.0, 1.0),
+            bgm_vol: bgm.clamp(0.0, 1.0),
 
             shoot: load(&sfx::shoot()).await,
-            hit: load(&sfx::hit()).await,
+            hit_variants,
             kill_steps,
             explode_small: load(&sfx::explode_small()).await,
             explode_big: load(&sfx::explode_big()).await,
@@ -93,6 +101,19 @@ impl Audio {
         }
     }
 
+    /// 与 `play_one` 相同，但音量会有 ±jitter 的随机抖动，避免重复 SFX 听起来太机械。
+    fn play_one_jitter(&self, snd: &Option<Sound>, vol_mul: f32, jitter: f32) {
+        if self.muted {
+            return;
+        }
+        if let Some(s) = snd {
+            use ::rand::{thread_rng, Rng};
+            let j = thread_rng().gen_range(-jitter..jitter);
+            let v = (self.vol * self.sfx_vol * vol_mul * (1.0 + j)).clamp(0.0, 1.0);
+            play_sound(s, PlaySoundParams { looped: false, volume: v });
+        }
+    }
+
     pub fn toggle_mute(&mut self) -> bool {
         self.muted = !self.muted;
         if self.muted {
@@ -106,13 +127,47 @@ impl Audio {
         self.muted
     }
 
+    /// 实时改写主音量，并把当前 BGM 音量同步过去（SFX 在下次播放时生效即可）。
+    pub fn set_master_vol(&mut self, v: f32) {
+        self.vol = v.clamp(0.0, 1.0);
+        self.refresh_bgm_volume();
+    }
+    pub fn set_bgm_vol(&mut self, v: f32) {
+        self.bgm_vol = v.clamp(0.0, 1.0);
+        self.refresh_bgm_volume();
+    }
+    pub fn set_sfx_vol(&mut self, v: f32) {
+        self.sfx_vol = v.clamp(0.0, 1.0);
+    }
+
+    fn refresh_bgm_volume(&self) {
+        if self.muted {
+            return;
+        }
+        let snd = match self.current_track {
+            BgmTrack::None => return,
+            BgmTrack::Menu => &self.bgm_menu,
+            BgmTrack::Play => &self.bgm_play,
+            BgmTrack::Boss => &self.bgm_boss,
+        };
+        if let Some(s) = snd {
+            set_sound_volume(s, self.vol * self.bgm_vol);
+        }
+    }
+
     // —— SFX 公共 API —————————————————————————————
 
     pub fn play_shoot(&self) {
-        self.play_one(&self.shoot, 0.55);
+        // shoot 频次极高，加 ±10% 音量抖动让连发更有"质感"
+        self.play_one_jitter(&self.shoot, 0.55, 0.10);
     }
     pub fn play_hit(&self) {
-        self.play_one(&self.hit, 0.35);
+        if self.hit_variants.is_empty() {
+            return;
+        }
+        use ::rand::{thread_rng, Rng};
+        let i = thread_rng().gen_range(0..self.hit_variants.len());
+        self.play_one_jitter(&self.hit_variants[i], 0.35, 0.12);
     }
     pub fn play_hurt(&self) {
         self.play_one(&self.hurt, 0.9);

@@ -1,7 +1,7 @@
 use ::rand::{thread_rng, Rng};
 use macroquad::prelude::*;
 
-use crate::art::draw_player_ship;
+use crate::art::draw_player_ship_skin;
 use crate::config::CFG;
 use crate::fx::{Fx, Particle};
 use crate::ship::ShipType;
@@ -35,6 +35,14 @@ pub struct CombatPerks {
     pub hull_plating_picks: u8,
     /// 升级卡保底计数：连续未出副武器解锁卡次数，≥5 时强制出。
     pub pity_unlock: u8,
+
+    // —— 武器进化标志位：满级 + perk 同时具备时的额外形态 ——
+    pub evo_missile: bool,    // Heatseeker
+    pub evo_drone: bool,      // Swarm
+    pub evo_laser: bool,      // Annihilator
+    pub evo_chain: bool,      // Tempest
+    pub evo_wave: bool,       // Cascade
+    pub evo_reflector: bool,  // Kaleidoscope
 }
 
 impl Default for PlayerStats {
@@ -73,6 +81,8 @@ pub struct Player {
     pub magnet_until: f32,
     pub perks: CombatPerks,
     pub ship: ShipType,
+    /// 当前涂装索引（0..3），由 save.ship_skin_choice 决定
+    pub skin: u8,
     pub stats: PlayerStats,
     pub dead: bool,
 }
@@ -95,6 +105,7 @@ impl Player {
             magnet_until: 0.0,
             perks: CombatPerks::default(),
             ship,
+            skin: 0,
             stats,
             dead: false,
         }
@@ -214,11 +225,27 @@ impl Player {
         let w = self.w;
         let h = self.h;
 
-        // 推进器尾焰
+        // 飞船底部光环：远处一层大软光，近处一层亮的
+        let aura = match self.ship {
+            ShipType::Vanguard => Color::from_rgba(0, 212, 255, 255),
+            ShipType::Striker => Color::from_rgba(0, 255, 194, 255),
+            ShipType::Engineer => Color::from_rgba(170, 140, 255, 255),
+        };
+        let pulse = 0.55 + (t * 3.2).sin() * 0.10;
+        let mut a1 = aura;
+        a1.a = 0.10 * pulse;
+        draw_circle(cx, cy + h * 0.06, w * 0.95, a1);
+        let mut a2 = aura;
+        a2.a = 0.22 * pulse;
+        draw_circle(cx, cy + h * 0.06, w * 0.55, a2);
+
+        // 推进器尾焰：双层 + 摇摆
         let flame_color = Color::from_rgba(125, 249, 255, 255);
         let mut glow = flame_color;
-        glow.a = 0.3;
-        draw_circle(cx, cy + h * 0.5, 14.0, glow);
+        glow.a = 0.35;
+        draw_circle(cx, cy + h * 0.5, 18.0, glow);
+        glow.a = 0.55;
+        draw_circle(cx, cy + h * 0.5, 10.0, glow);
         let flicker = (t * 30.0).sin() * 2.0;
         draw_triangle(
             vec2(cx - 7.0, cy + h * 0.5 - 6.0),
@@ -226,15 +253,24 @@ impl Player {
             vec2(cx, cy + h * 0.5 + 8.0 + flicker),
             flame_color,
         );
+        // 内焰：偏白
+        draw_triangle(
+            vec2(cx - 3.5, cy + h * 0.5 - 3.0),
+            vec2(cx + 3.5, cy + h * 0.5 - 3.0),
+            vec2(cx, cy + h * 0.5 + 4.0 + flicker * 0.6),
+            Color::from_rgba(240, 255, 255, 255),
+        );
 
-        draw_player_ship(self.ship, cx, cy, w, h, t);
+        draw_player_ship_skin(self.ship, self.skin, cx, cy, w, h, t);
 
-        // 护盾
+        // 护盾：双层动画环
         if self.shield {
             let pulse = 0.6 + (t * 6.0).sin() * 0.2;
             let mut sc = Color::from_rgba(77, 210, 255, 255);
             sc.a = pulse;
             draw_circle_lines(cx, cy, self.radius + 8.0, 2.0, sc);
+            sc.a = pulse * 0.4;
+            draw_circle_lines(cx, cy, self.radius + 14.0, 1.5, sc);
         }
     }
 }

@@ -53,23 +53,26 @@ impl SubWeapon for Missile {
         _enemies: &mut [Enemy],
         bullets: &mut Vec<Bullet>,
         _fx: &mut Fx,
+        _damage_acc: &mut [f32; 9],
     ) {
         if t - self.last_shot < self.interval() {
             return;
         }
         self.last_shot = t;
-        let n = self.count();
+        let evo = player.perks.evo_missile;
+        let n = self.count() + if evo { 1 } else { 0 };
+        let base_mul = (1.65 + self.level as f32 * 0.05) * if evo { 1.5 } else { 1.0 };
         for i in 0..n {
             let off = (i as f32 - (n as f32 - 1.0) * 0.5) * 14.0;
             // 初始向上 + 轻微外扩
             let vx = if n > 1 { off * 4.0 } else { 0.0 };
             let mut b = Bullet::player_shot(player.x + off, player.y - player.h * 0.5, vx, -300.0);
-            let (dmg, crit) = roll_crit(player, 1.65 + self.level as f32 * 0.05);
+            let (dmg, crit) = roll_crit(player, base_mul);
             b.damage = dmg;
             b.is_crit = crit;
             b.homing = true;
-            b.w = 6.0;
-            b.h = 12.0;
+            b.w = if evo { 8.0 } else { 6.0 };
+            b.h = if evo { 14.0 } else { 12.0 };
             b.source = HitSource::Missile;
             bullets.push(b);
         }

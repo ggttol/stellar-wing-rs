@@ -64,14 +64,17 @@ impl SubWeapon for Reflector {
         enemies: &mut [Enemy],
         bullets: &mut Vec<Bullet>,
         _fx: &mut Fx,
+        _damage_acc: &mut [f32; 9],
     ) {
         if t - self.last_shot < self.interval() {
             return;
         }
         self.last_shot = t;
-        let n = self.count();
+        let evo = player.perks.evo_reflector;
+        let n = self.count() + if evo { 1 } else { 0 };
         let speed = 430.0;
-        let bounces = self.bounces();
+        let bounces = self.bounces() + if evo { 2 } else { 0 };
+        let dmg_evo_mul = if evo { 1.30 } else { 1.0 };
         let base_dir =
             aim_at_nearest(enemies, player.x, player.y - player.h * 0.5).unwrap_or((0.0, -1.0));
 
@@ -82,7 +85,7 @@ impl SubWeapon for Reflector {
             let vy = dir.1 * speed;
 
             let mut b = Bullet::player_shot(player.x, player.y - player.h * 0.5, vx, vy);
-            let (dmg, crit) = roll_crit(player, 1.0 + self.level as f32 * 0.14);
+            let (dmg, crit) = roll_crit(player, (1.0 + self.level as f32 * 0.14) * dmg_evo_mul);
             b.damage = dmg;
             b.is_crit = crit;
             b.w = 7.0;
@@ -135,7 +138,8 @@ mod tests {
         let mut bullets = Vec::new();
         let mut fx = Fx::default();
 
-        reflector.tick(0.0, 1.2, &player, &mut enemies, &mut bullets, &mut fx);
+        let mut acc = [0.0_f32; 9];
+        reflector.tick(0.0, 1.2, &player, &mut enemies, &mut bullets, &mut fx, &mut acc);
 
         assert_eq!(bullets.len(), 1);
         assert!(bullets[0].vx > 0.0);

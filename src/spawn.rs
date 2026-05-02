@@ -4,7 +4,7 @@ use ::rand::{thread_rng, Rng};
 
 use crate::chapter;
 use crate::config::CFG;
-use crate::entity::{EliteMod, Enemy, EnemyKind, Pickup, PickupKind};
+use crate::entity::{BuffKind, EliteMod, Enemy, EnemyKind, Pickup, PickupKind};
 use crate::world::World;
 
 pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
@@ -43,7 +43,15 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
             EnemyKind::Small
         };
         let mul = endless_extra_mul(world);
-        let mut e = spawn_one(kind, x, t, rt, &(world.player.x, world.player.y));
+        let mut e = spawn_one_full(
+            kind,
+            x,
+            t,
+            rt,
+            &(world.player.x, world.player.y),
+            world.difficulty,
+            world.chapter_modifier,
+        );
         apply_endless_scaling(&mut e, mul);
         world.enemies.push(e);
     }
@@ -56,7 +64,15 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
         } else {
             EnemyKind::Medium
         };
-        let mut e = spawn_one(kind, x, t, rt, &(world.player.x, world.player.y));
+        let mut e = spawn_one_full(
+            kind,
+            x,
+            t,
+            rt,
+            &(world.player.x, world.player.y),
+            world.difficulty,
+            world.chapter_modifier,
+        );
         apply_endless_scaling(&mut e, mul);
         world.enemies.push(e);
     }
@@ -69,7 +85,15 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
         } else {
             EnemyKind::Large
         };
-        let mut e = spawn_one(kind, x, t, rt, &(world.player.x, world.player.y));
+        let mut e = spawn_one_full(
+            kind,
+            x,
+            t,
+            rt,
+            &(world.player.x, world.player.y),
+            world.difficulty,
+            world.chapter_modifier,
+        );
         apply_endless_scaling(&mut e, mul);
         world.enemies.push(e);
     }
@@ -80,18 +104,25 @@ pub fn spawn_chapter_wave(world: &mut World, dt: f32, t: f32) {
         if world.strafer_timer >= chap.strafer_interval / intensity {
             world.strafer_timer = 0.0;
             let mul = endless_extra_mul(world);
-            let mut e = spawn_strafer(t, rt);
+            let mut e = spawn_strafer(t, rt, world.difficulty);
             apply_endless_scaling(&mut e, mul);
             world.enemies.push(e);
         }
     }
 }
 
-/// 给定 kind、原始 x，按当前难度增益生成一只敌人。Kamikaze 会在此处锁定冲撞向量。
-pub fn spawn_one(kind: EnemyKind, x: f32, t: f32, run_time: f32, player_pos: &(f32, f32)) -> Enemy {
-    let mut e = spawn_enemy(kind, x, t, run_time);
+
+pub fn spawn_one_full(
+    kind: EnemyKind,
+    x: f32,
+    t: f32,
+    run_time: f32,
+    player_pos: &(f32, f32),
+    difficulty: u8,
+    chap_mod: crate::world::ChapterMod,
+) -> Enemy {
+    let mut e = spawn_enemy_full(kind, x, t, run_time, difficulty, chap_mod);
     if matches!(kind, EnemyKind::Kamikaze) {
-        // 锁定向玩家位置的方向向量
         let (px, py) = *player_pos;
         let dx = px - e.x;
         let dy = (py - e.y).max(60.0);
@@ -123,7 +154,7 @@ pub fn apply_endless_scaling(e: &mut Enemy, mul: f32) {
     e.xp = ((e.xp as f32) * mul.sqrt()).ceil() as u32;
 }
 
-fn spawn_strafer(t: f32, run_time: f32) -> Enemy {
+fn spawn_strafer(t: f32, run_time: f32, difficulty: u8) -> Enemy {
     use ::rand::{thread_rng, Rng};
     let mut rng = thread_rng();
     let from_left = rng.gen::<bool>();
@@ -133,29 +164,40 @@ fn spawn_strafer(t: f32, run_time: f32) -> Enemy {
     e.y = rng.gen_range(80.0..220.0);
     e.vx = if from_left { speed } else { -speed };
     e.vy = 0.0;
-    let hp_mul = 1.0 + run_time / 55.0;
+    let (d_hp, d_bspd, _, _) = World::difficulty_mods(difficulty);
+    let hp_mul = (1.0 + run_time / 55.0) * d_hp;
     let warmup = (run_time / 120.0).clamp(0.0, 1.0);
     e.hp *= hp_mul;
     e.bullet_damage = 1.0 + run_time / 100.0;
-    e.bullet_speed_mul = 0.58 + warmup * 0.42;
+    e.bullet_speed_mul = (0.58 + warmup * 0.42) * d_bspd;
     e.fire_rate *= 1.25 - warmup * 0.25;
     e.max_hp = e.hp;
     e.score = ((e.score as f32) * (1.0 + run_time / 180.0)) as u32;
     e
 }
 
-pub fn spawn_enemy(kind: EnemyKind, x: f32, t: f32, run_time: f32) -> Enemy {
+pub fn spawn_enemy_full(
+    kind: EnemyKind,
+    x: f32,
+    t: f32,
+    run_time: f32,
+    difficulty: u8,
+    chap_mod: crate::world::ChapterMod,
+) -> Enemy {
     let mut enemy = Enemy::new(kind, x, t);
-    let hp_mul = 1.0 + run_time / 55.0; // 无上限持续增长
+    let (d_hp, d_bspd, _xp, _score) = World::difficulty_mods(difficulty);
+    let hp_mul = (1.0 + run_time / 55.0) * d_hp * chap_mod.hp_mul();
     let score_mul = 1.0 + run_time / 180.0; // 分数倍率也不再封顶
     let warmup = (run_time / 120.0).clamp(0.0, 1.0);
     enemy.hp *= hp_mul;
     enemy.bullet_damage = 1.0 + run_time / 100.0; // 敌方子弹伤害随时间增长
-    enemy.bullet_speed_mul = 0.58 + warmup * 0.42;
+    enemy.bullet_speed_mul = (0.58 + warmup * 0.42) * d_bspd;
     enemy.fire_rate *= 1.35 - warmup * 0.35;
     enemy.max_hp = enemy.hp;
-    enemy.score = ((enemy.score as f32) * score_mul) as u32;
-    enemy.xp = ((enemy.xp as f32) * (1.0 + run_time / 220.0)).ceil() as u32;
+    let (_, _, d_xp, d_score) = World::difficulty_mods(difficulty);
+    enemy.score =
+        ((enemy.score as f32) * score_mul * d_score * chap_mod.score_mul()) as u32;
+    enemy.xp = ((enemy.xp as f32) * (1.0 + run_time / 220.0) * d_xp).ceil() as u32;
     if run_time > 90.0 {
         enemy.fire_rate *= 0.92;
     }
@@ -193,18 +235,19 @@ pub fn spawn_chapter_boss(world: &mut World, t: f32) {
 
     let scaled_hp_mul = chapter_boss_hp_mul(world.chapter_idx);
 
+    let (d_hp, _, _, _) = World::difficulty_mods(world.difficulty);
     if chap.endless {
         // 双 Boss：左右站位
         for x in [CFG.w * 0.30, CFG.w * 0.70] {
             let mut boss = Enemy::new(EnemyKind::Boss, x, t);
-            boss.hp *= 1.20 * scaled_hp_mul * (1.0 + world.run_time / 70.0);
+            boss.hp *= 1.20 * scaled_hp_mul * (1.0 + world.run_time / 70.0) * d_hp;
             boss.bullet_damage = 1.0 + world.run_time / 100.0;
             boss.max_hp = boss.hp;
             world.enemies.push(boss.into_boss_mod(pick_mod()));
         }
     } else {
         let mut boss = Enemy::new(EnemyKind::Boss, CFG.w * 0.5, t);
-        boss.hp *= 1.35 * scaled_hp_mul * (1.0 + world.run_time / 70.0);
+        boss.hp *= 1.35 * scaled_hp_mul * (1.0 + world.run_time / 70.0) * d_hp;
         boss.bullet_damage = 1.0 + world.run_time / 100.0;
         boss.max_hp = boss.hp;
         world.enemies.push(boss.into_boss_mod(pick_mod()));
@@ -275,6 +318,68 @@ pub fn maybe_drop_special(pickups: &mut Vec<Pickup>, e: &Enemy, t: f32) {
             kind,
         ));
     }
+}
+
+/// 战斗中掉落的"小数值卡"。频次比 `maybe_drop_special` 高，提供持续的微量
+/// 增益，省掉了原先升级弹窗里大量的小数值卡。
+pub fn maybe_drop_buff(
+    pickups: &mut Vec<Pickup>,
+    e: &Enemy,
+    chap_mod: crate::world::ChapterMod,
+) {
+    let mut rng = thread_rng();
+    let base = match e.kind {
+        EnemyKind::Small => 0.06,
+        EnemyKind::Kamikaze => 0.05,
+        EnemyKind::Medium => 0.13,
+        EnemyKind::Strafer | EnemyKind::Sniper | EnemyKind::Weaver => 0.12,
+        EnemyKind::Large => 0.30,
+        EnemyKind::MineLayer => 0.24,
+        EnemyKind::Boss => 1.0, // 自带保底，下面强制多掉几张
+    };
+    // 精英 ×2、章节修饰按 buff_drop_mul，再 cap 到 1
+    let mut chance: f32 = if e.is_elite { base * 2.0 } else { base };
+    chance *= chap_mod.buff_drop_mul();
+    chance = chance.min(1.0);
+
+    let drops = if matches!(e.kind, EnemyKind::Boss) {
+        (4.0 * chap_mod.buff_drop_mul()).round() as u32
+    } else if rng.gen::<f32>() < chance {
+        1
+    } else {
+        return;
+    };
+
+    for _ in 0..drops {
+        let kind = pick_buff_kind(&mut rng);
+        let ox = rng.gen_range(-14.0..14.0);
+        let oy = rng.gen_range(-10.0..10.0);
+        pickups.push(Pickup::buff(e.x + ox, e.y + oy, kind));
+    }
+}
+
+/// 加权随机选一种 buff。FireRate / Damage 出现得更勤，crit 类相对稀少。
+fn pick_buff_kind(rng: &mut impl Rng) -> BuffKind {
+    let weights: &[(BuffKind, u32)] = &[
+        (BuffKind::FireRate, 18),
+        (BuffKind::Damage, 18),
+        (BuffKind::BulletSpeed, 14),
+        (BuffKind::MoveSpeed, 14),
+        (BuffKind::PickupR, 8),
+        (BuffKind::XpMul, 8),
+        (BuffKind::ScoreMul, 8),
+        (BuffKind::CritChance, 6),
+        (BuffKind::CritDamage, 6),
+    ];
+    let total: u32 = weights.iter().map(|(_, w)| *w).sum();
+    let mut r = rng.gen_range(0..total);
+    for (k, w) in weights {
+        if r < *w {
+            return *k;
+        }
+        r -= w;
+    }
+    BuffKind::Damage
 }
 
 #[cfg(test)]

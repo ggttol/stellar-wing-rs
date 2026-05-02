@@ -95,6 +95,7 @@ impl SubWeapon for VoidRift {
         enemies: &mut [Enemy],
         _bullets: &mut Vec<Bullet>,
         fx: &mut Fx,
+        damage_acc: &mut [f32; 9],
     ) {
         // 放置新裂隙
         if t - self.last_place >= self.place_interval() {
@@ -169,7 +170,9 @@ impl SubWeapon for VoidRift {
                     let dy = r.y - e.y;
                     if dx * dx + dy * dy < radius * radius {
                         let (dmg, _) = roll_crit(player, base * 0.34);
-                        e.hp -= dmg * e.damage_mul();
+                        let applied = dmg * e.damage_mul();
+                        e.hp -= applied;
+                        damage_acc[HitSource::Rift as usize] += applied;
                         e.hit_flash = 0.05;
                         e.last_hit = HitSource::Rift;
                         hit_count += 1;
@@ -191,7 +194,9 @@ impl SubWeapon for VoidRift {
                     let dy = r.y - e.y;
                     if dx * dx + dy * dy < radius * radius {
                         let (dmg, _) = roll_crit(player, base);
-                        e.hp -= dmg * e.damage_mul();
+                        let applied = dmg * e.damage_mul();
+                        e.hp -= applied;
+                        damage_acc[HitSource::Rift as usize] += applied;
                         e.hit_flash = 0.08;
                         e.last_hit = HitSource::Rift;
                         hit_count += 1;
@@ -207,39 +212,79 @@ impl SubWeapon for VoidRift {
 
     fn draw(&self, player: &Player, t: f32, ox: f32, oy: f32) {
         let color = Color::from_rgba(160, 100, 255, 255);
+        let core_color = Color::from_rgba(220, 180, 255, 255);
+        let radius = self.radius();
         for r in &self.rifts {
             let a = (r.life / self.lifetime()).clamp(0.0, 1.0);
             let x = r.x + ox;
             let y = r.y + oy;
 
-            // 外圈脉冲
-            let pulse_phase = (t * 4.0).sin() * 0.2 + 0.8;
-            let mut outer = color;
-            outer.a = 0.2 * a * pulse_phase;
-            draw_circle(x, y, self.radius(), outer);
+            // 外晕 — 多层 soft halo 模拟"重力扭曲"的边缘渐变
+            let pulse = 0.85 + (t * 4.0).sin() * 0.15;
+            let halo_layers: [(f32, f32); 3] = [(1.18, 0.10), (0.95, 0.18), (0.72, 0.30)];
+            for (rmul, amul) in halo_layers {
+                let mut c = color;
+                c.a = amul * a * pulse;
+                draw_circle(x, y, radius * rmul, c);
+            }
 
-            // 边界环
+            // 双层边界环：外细虚线感（描两遍），内厚一层
             let mut ring = color;
-            ring.a = 0.55 * a;
-            draw_circle_lines(x, y, self.radius(), 2.0, ring);
+            ring.a = 0.30 * a;
+            draw_circle_lines(x, y, radius * 1.02, 1.0, ring);
+            ring.a = 0.65 * a;
+            draw_circle_lines(x, y, radius, 2.5, ring);
 
-            // 内核
-            let mut core = color;
-            core.a = 0.7 * a * pulse_phase;
-            draw_circle(x, y, 12.0, core);
+            // 旋转中的能量弧线（3 道，错相位）
+            let arcs = 3;
+            let segs = 18;
+            let r_orbit = radius * 0.78;
+            for k in 0..arcs {
+                let phase = t * 1.6 + k as f32 * std::f32::consts::TAU / arcs as f32;
+                // 每弧只画一段（0.6 弧度 ≈ 35°），然后随 phase 旋转
+                let arc_span = 0.55_f32;
+                for s in 0..segs {
+                    let u = s as f32 / segs as f32;
+                    let theta = phase + u * arc_span;
+                    let theta_n = phase + (u + 1.0 / segs as f32) * arc_span;
+                    // 弧线"飘动"半径，让它有起伏
+                    let wob = (t * 3.0 + u * std::f32::consts::TAU + k as f32).sin() * 4.0;
+                    let r1 = r_orbit + wob;
+                    let r2 = r_orbit + wob;
+                    let x1 = x + theta.cos() * r1;
+                    let y1 = y + theta.sin() * r1;
+                    let x2 = x + theta_n.cos() * r2;
+                    let y2 = y + theta_n.sin() * r2;
+                    let mut c = core_color;
+                    c.a = a * 0.85 * (1.0 - u * 0.5);
+                    draw_line(x1, y1, x2, y2, 2.0, c);
+                }
+            }
 
-            // 吸入粒子（Gravity Well 生效时更密）
-            let particle_count = if player.perks.gravity_well { 4 } else { 1 };
-            for i in 0..particle_count {
-                let angle = t * 3.0
-                    + i as f32 * std::f32::consts::TAU / particle_count as f32
-                    + r.life * 2.0;
-                let dist = self.radius() * 0.6 * (t * 2.0 + i as f32).sin().abs();
-                let px = x + angle.cos() * dist;
-                let py = y + angle.sin() * dist;
-                let mut pc = color;
-                pc.a = 0.6 * a;
-                draw_circle(px, py, 2.0, pc);
+            // 内核：双层 + 偏白热点
+            let core_pulse = 0.80 + (t * 8.0).sin() * 0.20;
+            let mut hot = core_color;
+            hot.a = 0.70 * a * core_pulse;
+            draw_circle(x, y, 14.0, hot);
+            hot.a = a * core_pulse;
+            draw_circle(x, y, 7.0, hot);
+            let mut white = WHITE;
+            white.a = 0.85 * a * core_pulse;
+            draw_circle(x, y, 3.0, white);
+
+            // Gravity Well 生效：从外缘朝内的 4 个吸入粒子
+            if player.perks.gravity_well {
+                for i in 0..4 {
+                    let phase = (t * 1.5 + i as f32 * 0.25) % 1.0;
+                    let theta =
+                        i as f32 * std::f32::consts::TAU / 4.0 + t * 0.7;
+                    let inward = radius * (1.0 - phase);
+                    let px = x + theta.cos() * inward;
+                    let py = y + theta.sin() * inward;
+                    let mut pc = core_color;
+                    pc.a = a * (1.0 - phase) * 0.85;
+                    draw_circle(px, py, 2.6, pc);
+                }
             }
         }
     }
@@ -275,9 +320,10 @@ mod tests {
         let mut bullets = Vec::new();
         let mut fx = Fx::default();
 
-        rift.tick(0.1, 10.0, &player, &mut enemies, &mut bullets, &mut fx);
+        let mut acc = [0.0_f32; 9];
+        rift.tick(0.1, 10.0, &player, &mut enemies, &mut bullets, &mut fx, &mut acc);
         let start_y = rift.rifts[0].y;
-        rift.tick(0.3, 10.3, &player, &mut enemies, &mut bullets, &mut fx);
+        rift.tick(0.3, 10.3, &player, &mut enemies, &mut bullets, &mut fx, &mut acc);
 
         assert!(rift.rifts[0].y < start_y);
         assert!(enemies[0].hp < hp);

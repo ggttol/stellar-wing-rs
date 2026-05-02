@@ -4,10 +4,10 @@ use macroquad::prelude::*;
 
 use crate::audio::Audio;
 use crate::collision::{bullet_hits_enemy, bullet_hits_player, hit_circle};
-use crate::entity::{Bullet, Enemy, EnemyKind, HitSource, PickupKind, Player};
+use crate::entity::{BuffKind, Bullet, Enemy, EnemyKind, HitSource, PickupKind, Player};
 use crate::fx::Fx;
 use crate::lang::{t, Lang};
-use crate::spawn::{drop_xp_gems, maybe_drop_special};
+use crate::spawn::{drop_xp_gems, maybe_drop_buff, maybe_drop_special};
 use crate::world::World;
 
 /// 寻的子弹朝最近敌人转向并加速。
@@ -99,6 +99,7 @@ pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: 
                 }
             }
             e.hp -= damage;
+            world.damage_by_source[b.source as usize] += damage;
             e.hit_flash = 0.08;
             e.last_hit = b.source;
             if b.source == HitSource::Missile {
@@ -108,14 +109,14 @@ pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: 
             if b.source == HitSource::Wave {
                 e.wave_marked = true;
             }
-            fx.burst(
-                b.x,
-                b.y,
-                4,
-                2.0,
-                Color::from_rgba(125, 249, 255, 255),
-                120.0,
-            );
+            // 命中粒子用子弹的代表色，连贯性更好
+            let tint = b.tint();
+            fx.burst(b.x, b.y, 5, 2.0, tint, 140.0);
+            // 暴击命中：加一道短冻帧 + 冲击波环，强化"重击感"
+            if b.is_crit {
+                fx.hit_pause(0.04);
+                fx.shock_ring(b.x, b.y, tint, 0.6);
+            }
             if world.hit_sfx_cooldown <= 0.0 {
                 audio.play_hit();
                 world.hit_sfx_cooldown = 0.05;
@@ -133,7 +134,9 @@ pub fn resolve_player_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: 
 /// 处理本帧"刚被打死"的敌人：分数、combo、超表回收、爆破、掉落。
 /// 返回是否有 boss 在本帧死亡。
 pub fn process_kills(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) -> bool {
+    // 难度的分数 / XP 倍率已在 spawn_enemy_with_difficulty 里乘进 e.score / e.xp 了
     let score_mul = world.player.stats.score_mul;
+    let chap_mod = world.chapter_modifier;
     let mut boss_died = false;
 
     // 先把刚阵亡的敌人收集出来（按引用处理，回头再 retain），
@@ -157,6 +160,10 @@ pub fn process_kills(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) -> b
             );
         }
         world.combo = world.combo.saturating_add(1);
+        if world.combo > world.max_combo {
+            world.max_combo = world.combo;
+        }
+        world.kills = world.kills.saturating_add(1);
         world.combo_timer = 1.2;
         world.combo_flash = 0.4;
         let combo_mul = if world.combo >= 30 {
@@ -196,9 +203,21 @@ pub fn process_kills(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) -> b
             EnemyKind::Weaver => (1.35, Color::from_rgba(92, 240, 210, 255), false),
             EnemyKind::MineLayer => (1.8, Color::from_rgba(255, 158, 76, 255), true),
         };
-        fx.explode(e.x, e.y, scale, color);
+        if big {
+            fx.explode_big(e.x, e.y, scale, color);
+            // 大型敌人 / Boss：命中冻帧 + 慢动作
+            if matches!(e.kind, EnemyKind::Boss) {
+                fx.hit_pause(0.10);
+                fx.request_slow_mo(0.45, 0.30);
+            } else {
+                fx.hit_pause(0.06);
+            }
+        } else {
+            fx.explode(e.x, e.y, scale, color);
+        }
         drop_xp_gems(&mut world.pickups, e);
         maybe_drop_special(&mut world.pickups, e, t);
+        maybe_drop_buff(&mut world.pickups, e, chap_mod);
 
         let relay = world.player.perks.drone_relay && e.last_hit == HitSource::Drone;
         let kind = e.kind;
@@ -227,8 +246,33 @@ pub fn process_kills(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) -> b
                 audio.play_explode_small();
             }
         }
+        // Codex：敌人种类位
+        let kind_idx = match kind {
+            EnemyKind::Small => 0,
+            EnemyKind::Medium => 1,
+            EnemyKind::Large => 2,
+            EnemyKind::Boss => 3,
+            EnemyKind::Kamikaze => 4,
+            EnemyKind::Strafer => 5,
+            EnemyKind::Sniper => 6,
+            EnemyKind::Weaver => 7,
+            EnemyKind::MineLayer => 8,
+        };
+        world.codex_enemies_run |= 1u32 << kind_idx;
         if matches!(kind, EnemyKind::Boss) {
             boss_died = true;
+            // Boss 修饰：用 boss_mod 索引到 Codex
+            if let Some(bm) = e.boss_mod {
+                let bm_idx = match bm {
+                    crate::entity::BossMod::Frenzied => 0,
+                    crate::entity::BossMod::Bulwark => 1,
+                    crate::entity::BossMod::Summoner => 2,
+                    crate::entity::BossMod::StormCore => 3,
+                    crate::entity::BossMod::Phantom => 4,
+                    crate::entity::BossMod::Hydra => 5,
+                };
+                world.codex_bosses_run |= 1u32 << bm_idx;
+            }
         }
     }
 
@@ -236,7 +280,7 @@ pub fn process_kills(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) -> b
 }
 
 /// 敌人子弹打玩家。
-pub fn resolve_enemy_bullets(world: &mut World, audio: &Audio, t: f32) {
+pub fn resolve_enemy_bullets(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) {
     if world.player.dead {
         return;
     }
@@ -248,13 +292,23 @@ pub fn resolve_enemy_bullets(world: &mut World, audio: &Audio, t: f32) {
             b.dead = true;
             if world.player.hit(t) {
                 audio.play_hurt();
+                fx.damage_flash(0.85);
+                fx.hit_pause(0.06);
+                fx.shake = fx.shake.max(8.0);
+                fx.shock_ring(
+                    world.player.x,
+                    world.player.y,
+                    Color::from_rgba(255, 90, 110, 255),
+                    1.2,
+                );
+                world.chapter_no_hit = false;
             }
         }
     }
 }
 
 /// 敌人和玩家近身碰撞。
-pub fn resolve_enemy_player_contact(world: &mut World, audio: &Audio, t: f32) {
+pub fn resolve_enemy_player_contact(world: &mut World, fx: &mut Fx, audio: &Audio, t: f32) {
     if world.player.dead {
         return;
     }
@@ -272,6 +326,10 @@ pub fn resolve_enemy_player_contact(world: &mut World, audio: &Audio, t: f32) {
         ) {
             if world.player.hit(t) {
                 audio.play_hurt();
+                fx.damage_flash(0.95);
+                fx.hit_pause(0.08);
+                fx.shake = fx.shake.max(10.0);
+                world.chapter_no_hit = false;
             }
             if !matches!(e.kind, EnemyKind::Boss) {
                 e.telegraph = 0.3;
@@ -387,7 +445,33 @@ pub fn collect_pickups(world: &mut World, fx: &mut Fx, dt: f32, lang: Lang) {
                     14.0,
                 );
             }
+            PickupKind::Buff(b) => {
+                apply_buff(&mut world.player.stats, b);
+                fx.float_text(
+                    px + ((b as u8 as f32) * 7.0 - 30.0),
+                    py - 46.0,
+                    t(b.short_label(), lang),
+                    b.color(),
+                    13.0,
+                );
+            }
         }
+    }
+}
+
+/// 把一颗"小数值卡"应用到 PlayerStats 上。每种 buff 的步进比同名 card 略小，
+/// 因为它们是在战斗中频繁掉落的。卡牌系统的 cap 在这里复用，确保不会无限叠加。
+fn apply_buff(stats: &mut crate::entity::player::PlayerStats, kind: BuffKind) {
+    match kind {
+        BuffKind::FireRate => stats.fire_rate = (stats.fire_rate * 0.93).max(0.18),
+        BuffKind::Damage => stats.damage_mul = (stats.damage_mul * 1.06).min(2.35),
+        BuffKind::BulletSpeed => stats.bullet_speed = (stats.bullet_speed * 1.08).min(1200.0),
+        BuffKind::MoveSpeed => stats.speed = (stats.speed * 1.05).min(2200.0),
+        BuffKind::PickupR => stats.attract_radius = (stats.attract_radius * 1.18).min(230.0),
+        BuffKind::XpMul => stats.xp_mul = (stats.xp_mul * 1.08).min(2.0),
+        BuffKind::ScoreMul => stats.score_mul = (stats.score_mul * 1.08).min(2.2),
+        BuffKind::CritChance => stats.crit_chance = (stats.crit_chance + 0.03).min(0.35),
+        BuffKind::CritDamage => stats.crit_mul = (stats.crit_mul + 0.15).min(2.8),
     }
 }
 

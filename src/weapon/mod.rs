@@ -100,6 +100,9 @@ pub trait SubWeapon {
     fn max_level(&self) -> u8 {
         5
     }
+    /// `damage_acc[HitSource as usize]` 累加本 tick 直接造成的伤害；
+    /// 只有不通过 Bullet 走 resolve_player_bullets 的武器（laser/chain/rift）需要写。
+    #[allow(clippy::too_many_arguments)]
     fn tick(
         &mut self,
         dt: f32,
@@ -108,6 +111,7 @@ pub trait SubWeapon {
         enemies: &mut [Enemy],
         bullets: &mut Vec<Bullet>,
         fx: &mut Fx,
+        damage_acc: &mut [f32; 9],
     );
     fn draw(&self, player: &Player, t: f32, ox: f32, oy: f32);
 }
@@ -125,6 +129,7 @@ impl WeaponSlot {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn tick(
         &mut self,
         dt: f32,
@@ -133,10 +138,11 @@ impl WeaponSlot {
         enemies: &mut [Enemy],
         bullets: &mut Vec<Bullet>,
         fx: &mut Fx,
+        damage_acc: &mut [f32; 9],
     ) -> bool {
         let fired_main = self.main.tick(t, player, bullets);
         for s in &mut self.subs {
-            s.tick(dt, t, player, enemies, bullets, fx);
+            s.tick(dt, t, player, enemies, bullets, fx, damage_acc);
         }
         fired_main
     }

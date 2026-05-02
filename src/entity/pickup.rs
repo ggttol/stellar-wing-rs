@@ -2,6 +2,67 @@ use macroquad::prelude::*;
 
 use crate::config::CFG;
 
+/// 战斗中爆掉落的"小数值卡"。每种代表一项小幅永久属性增益（同 cap 限制）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BuffKind {
+    FireRate,
+    Damage,
+    BulletSpeed,
+    MoveSpeed,
+    PickupR,
+    XpMul,
+    ScoreMul,
+    CritChance,
+    CritDamage,
+}
+
+impl BuffKind {
+    /// 拾取后浮字短标签（已经多语言查表）
+    pub fn short_label(self) -> &'static str {
+        match self {
+            BuffKind::FireRate => "+RATE",
+            BuffKind::Damage => "+DMG",
+            BuffKind::BulletSpeed => "+VEL",
+            BuffKind::MoveSpeed => "+SPD",
+            BuffKind::PickupR => "+RANGE",
+            BuffKind::XpMul => "+XP",
+            BuffKind::ScoreMul => "+SCORE",
+            BuffKind::CritChance => "+CRIT",
+            BuffKind::CritDamage => "+CRIT DMG",
+        }
+    }
+
+    /// 拾取色（同时用于绘制 buff 图标），方便玩家通过颜色辨认
+    pub fn color(self) -> Color {
+        match self {
+            BuffKind::FireRate => Color::from_rgba(255, 130, 90, 255),
+            BuffKind::Damage => Color::from_rgba(255, 90, 110, 255),
+            BuffKind::BulletSpeed => Color::from_rgba(255, 220, 100, 255),
+            BuffKind::MoveSpeed => Color::from_rgba(125, 249, 255, 255),
+            BuffKind::PickupR => Color::from_rgba(255, 130, 220, 255),
+            BuffKind::XpMul => Color::from_rgba(150, 230, 255, 255),
+            BuffKind::ScoreMul => Color::from_rgba(255, 200, 90, 255),
+            BuffKind::CritChance => Color::from_rgba(255, 110, 80, 255),
+            BuffKind::CritDamage => Color::from_rgba(255, 80, 60, 255),
+        }
+    }
+
+    /// 单字符图标（在小晶片上画的字母）
+    pub fn glyph(self) -> &'static str {
+        match self {
+            BuffKind::FireRate => "F",
+            BuffKind::Damage => "D",
+            BuffKind::BulletSpeed => "V",
+            BuffKind::MoveSpeed => "S",
+            BuffKind::PickupR => "M",
+            BuffKind::XpMul => "X",
+            BuffKind::ScoreMul => "$",
+            BuffKind::CritChance => "C",
+            BuffKind::CritDamage => "K",
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PickupKind {
     Xp,
@@ -9,6 +70,7 @@ pub enum PickupKind {
     Magnet,
     Ammo,
     Barrier,
+    Buff(BuffKind),
 }
 
 pub struct Pickup {
@@ -44,6 +106,19 @@ impl Pickup {
             vx: 0.0,
             vy: -20.0,
             kind,
+            value: 1,
+            spin: 0.0,
+            dead: false,
+        }
+    }
+
+    pub fn buff(x: f32, y: f32, kind: BuffKind) -> Self {
+        Self {
+            x,
+            y,
+            vx: 0.0,
+            vy: -28.0,
+            kind: PickupKind::Buff(kind),
             value: 1,
             spin: 0.0,
             dead: false,
@@ -111,6 +186,7 @@ impl Pickup {
             PickupKind::Magnet => Color::from_rgba(255, 120, 210, 255),
             PickupKind::Ammo => Color::from_rgba(255, 180, 80, 255),
             PickupKind::Barrier => Color::from_rgba(125, 200, 255, 255),
+            PickupKind::Buff(b) => b.color(),
         };
         let mut g = c;
         g.a = 0.35;
@@ -153,6 +229,41 @@ impl Pickup {
             PickupKind::Barrier => {
                 draw_circle_lines(x, y, 7.0, 2.0, c);
                 draw_circle(x, y, 3.0, WHITE);
+            }
+            PickupKind::Buff(b) => {
+                // 菱形芯片 + 中心字母图标
+                let s = 6.5;
+                draw_triangle(
+                    vec2(x, self.y - s),
+                    vec2(self.x + s, self.y),
+                    vec2(self.x - s, self.y),
+                    c,
+                );
+                draw_triangle(
+                    vec2(x, self.y + s),
+                    vec2(self.x + s, self.y),
+                    vec2(self.x - s, self.y),
+                    c,
+                );
+                // 描边让芯片更立体
+                let mut edge = c;
+                edge.r = (edge.r * 0.4).clamp(0.0, 1.0);
+                edge.g = (edge.g * 0.4).clamp(0.0, 1.0);
+                edge.b = (edge.b * 0.4).clamp(0.0, 1.0);
+                draw_line(x, self.y - s, self.x + s, self.y, 1.0, edge);
+                draw_line(x, self.y + s, self.x + s, self.y, 1.0, edge);
+                draw_line(x, self.y - s, self.x - s, self.y, 1.0, edge);
+                draw_line(x, self.y + s, self.x - s, self.y, 1.0, edge);
+                // 中心字母（屏幕坐标，免坐标偏移）
+                let glyph = b.glyph();
+                let dim = measure_text(glyph, None, 11, 1.0);
+                draw_text(
+                    glyph,
+                    x - dim.width * 0.5,
+                    y + 4.0,
+                    11.0,
+                    Color::from_rgba(20, 10, 30, 255),
+                );
             }
         }
     }

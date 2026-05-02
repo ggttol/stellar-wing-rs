@@ -33,9 +33,11 @@ impl Rarity {
         }
     }
     pub fn weight(self) -> u32 {
+        // 调过：让 Rare（含副武器升级）出现得更频繁，Common 占比降低。
+        // 总权重 100，便于估算（44/34/15/7）。
         match self {
-            Rarity::Common => 48,
-            Rarity::Rare => 30,
+            Rarity::Common => 44,
+            Rarity::Rare => 34,
             Rarity::Epic => 15,
             Rarity::Legendary => 7,
         }
@@ -53,31 +55,12 @@ pub struct Card {
     pub eligible: fn(&Player, &WeaponSlot) -> bool,
 }
 
-// ---- 数值卡 ---------------------------------------------------------------
-fn fire_rate_up(p: &mut Player, _: &mut WeaponSlot) {
-    p.stats.fire_rate = (p.stats.fire_rate * 0.90).max(0.18);
-}
-fn fire_rate_eligible(p: &Player, _: &WeaponSlot) -> bool {
-    p.stats.fire_rate > 0.18
-}
-fn damage_up(p: &mut Player, _: &mut WeaponSlot) {
-    p.stats.damage_mul = (p.stats.damage_mul * 1.12).min(2.35);
-}
-fn damage_eligible(p: &Player, _: &WeaponSlot) -> bool {
-    p.stats.damage_mul < 2.35
-}
-fn bullet_speed_up(p: &mut Player, _: &mut WeaponSlot) {
-    p.stats.bullet_speed = (p.stats.bullet_speed * 1.15).min(1200.0);
-}
-fn bullet_speed_eligible(p: &Player, _: &WeaponSlot) -> bool {
-    p.stats.bullet_speed < 1200.0
-}
-fn move_speed_up(p: &mut Player, _: &mut WeaponSlot) {
-    p.stats.speed = (p.stats.speed * 1.10).min(2200.0);
-}
-fn move_speed_eligible(p: &Player, _: &WeaponSlot) -> bool {
-    p.stats.speed < 2200.0
-}
+// ---- 构筑性卡 -------------------------------------------------------------
+//
+// 注：fire_rate / damage / bullet_speed / move_speed / pickup_r / xp_mul /
+// score_mul / crit_chance / crit_dmg 这九项小数值卡已经从卡池中移除，改为
+// 战斗中 BuffKind 掉落（src/spawn.rs::maybe_drop_buff），避免频繁的弹窗
+// 打断玩家。这里只保留构筑性的"重大决策"卡。
 fn max_hp_up(p: &mut Player, _: &mut WeaponSlot) {
     if p.perks.hull_plating_picks < 2 {
         p.stats.max_lives = p.stats.max_lives.saturating_add(1);
@@ -87,36 +70,6 @@ fn max_hp_up(p: &mut Player, _: &mut WeaponSlot) {
 }
 fn max_hp_eligible(p: &Player, _: &WeaponSlot) -> bool {
     p.perks.hull_plating_picks < 2
-}
-fn pickup_radius_up(p: &mut Player, _: &mut WeaponSlot) {
-    p.stats.attract_radius = (p.stats.attract_radius * 1.35).min(230.0);
-}
-fn pickup_radius_eligible(p: &Player, _: &WeaponSlot) -> bool {
-    p.stats.attract_radius < 230.0
-}
-fn crit_chance_up(p: &mut Player, _: &mut WeaponSlot) {
-    p.stats.crit_chance = (p.stats.crit_chance + 0.08).min(0.35);
-}
-fn crit_chance_eligible(p: &Player, _: &WeaponSlot) -> bool {
-    p.stats.crit_chance < 0.35
-}
-fn crit_dmg_up(p: &mut Player, _: &mut WeaponSlot) {
-    p.stats.crit_mul = (p.stats.crit_mul + 0.35).min(2.8);
-}
-fn crit_dmg_eligible(p: &Player, _: &WeaponSlot) -> bool {
-    p.stats.crit_chance > 0.0 && p.stats.crit_mul < 2.8
-}
-fn score_mul_up(p: &mut Player, _: &mut WeaponSlot) {
-    p.stats.score_mul = (p.stats.score_mul * 1.18).min(2.2);
-}
-fn score_mul_eligible(p: &Player, _: &WeaponSlot) -> bool {
-    p.stats.score_mul < 2.2
-}
-fn xp_mul_up(p: &mut Player, _: &mut WeaponSlot) {
-    p.stats.xp_mul = (p.stats.xp_mul * 1.18).min(2.0);
-}
-fn xp_mul_eligible(p: &Player, _: &WeaponSlot) -> bool {
-    p.stats.xp_mul < 2.0
 }
 fn regen_up(p: &mut Player, _: &mut WeaponSlot) {
     p.stats.regen_per_min = (p.stats.regen_per_min + 0.35).min(1.2);
@@ -327,69 +280,68 @@ fn prism_eligible(p: &Player, w: &WeaponSlot) -> bool {
     !p.perks.prism && w.has("reflector") && w.has("laser")
 }
 
+// —— 武器进化（金卡） ————————————————————————————————
+//
+// 出现条件：副武器满级 (Lv5) + 对应 perk 已点。每个武器一种进化，apply 把
+// 对应 evo_X 标志置 true。weapons 内会读这个标志放大伤害 / 数量 / 视觉。
+//
+// 设计理念：进化是对老 build 的"二阶段毕业"，让玩家追逐"凑齐 Lv5 + perk"。
+
+fn weapon_lv5(w: &WeaponSlot, id: &str) -> bool {
+    w.subs
+        .iter()
+        .find(|s| s.id() == id)
+        .is_some_and(|s| s.level() >= 5)
+}
+
+fn evo_missile_apply(p: &mut Player, _: &mut WeaponSlot) {
+    p.perks.evo_missile = true;
+}
+fn evo_missile_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    !p.perks.evo_missile && p.perks.heat_lock && weapon_lv5(w, "missile")
+}
+
+fn evo_drone_apply(p: &mut Player, _: &mut WeaponSlot) {
+    p.perks.evo_drone = true;
+}
+fn evo_drone_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    !p.perks.evo_drone && p.perks.drone_relay && weapon_lv5(w, "drone")
+}
+
+fn evo_laser_apply(p: &mut Player, _: &mut WeaponSlot) {
+    p.perks.evo_laser = true;
+}
+fn evo_laser_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    !p.perks.evo_laser && p.perks.heat_lock && weapon_lv5(w, "laser")
+}
+
+fn evo_chain_apply(p: &mut Player, _: &mut WeaponSlot) {
+    p.perks.evo_chain = true;
+}
+fn evo_chain_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    !p.perks.evo_chain && p.perks.static_mark && weapon_lv5(w, "chain")
+}
+
+fn evo_wave_apply(p: &mut Player, _: &mut WeaponSlot) {
+    p.perks.evo_wave = true;
+}
+fn evo_wave_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    !p.perks.evo_wave && p.perks.resonance && weapon_lv5(w, "wave")
+}
+
+fn evo_reflector_apply(p: &mut Player, _: &mut WeaponSlot) {
+    p.perks.evo_reflector = true;
+}
+fn evo_reflector_eligible(p: &Player, w: &WeaponSlot) -> bool {
+    !p.perks.evo_reflector && p.perks.prism && weapon_lv5(w, "reflector")
+}
+
 static CARD_POOL: std::sync::OnceLock<Vec<Card>> = std::sync::OnceLock::new();
 
 pub fn pool() -> &'static [Card] {
     CARD_POOL.get_or_init(|| {
         vec![
-            // 数值（白卡）
-            c(
-                "fire_rate",
-                Rarity::Common,
-                "Rapid Fire",
-                "Fire rate +15%",
-                fire_rate_up,
-                fire_rate_eligible,
-            ),
-            c(
-                "damage",
-                Rarity::Common,
-                "High Caliber",
-                "Damage +20%",
-                damage_up,
-                damage_eligible,
-            ),
-            c(
-                "bullet_speed",
-                Rarity::Common,
-                "Velocity",
-                "Bullet speed +25%",
-                bullet_speed_up,
-                bullet_speed_eligible,
-            ),
-            c(
-                "move_speed",
-                Rarity::Common,
-                "Afterburner",
-                "Move speed +15%",
-                move_speed_up,
-                move_speed_eligible,
-            ),
-            c(
-                "pickup_r",
-                Rarity::Common,
-                "Magnetic Field",
-                "Pickup range +50%",
-                pickup_radius_up,
-                pickup_radius_eligible,
-            ),
-            c(
-                "xp_mul",
-                Rarity::Common,
-                "Sharp Eyes",
-                "XP gain +30%",
-                xp_mul_up,
-                xp_mul_eligible,
-            ),
-            c(
-                "score_mul",
-                Rarity::Common,
-                "Bounty Hunter",
-                "Score +25%",
-                score_mul_up,
-                score_mul_eligible,
-            ),
-            // 数值（蓝卡）
+            // 构筑性蓝卡
             c(
                 "max_hp",
                 Rarity::Rare,
@@ -397,22 +349,6 @@ pub fn pool() -> &'static [Card] {
                 "Max HP +1",
                 max_hp_up,
                 max_hp_eligible,
-            ),
-            c(
-                "crit_chance",
-                Rarity::Rare,
-                "Sniper Lens",
-                "Crit chance +10%",
-                crit_chance_up,
-                crit_chance_eligible,
-            ),
-            c(
-                "crit_dmg",
-                Rarity::Rare,
-                "Devastator",
-                "Crit damage +50%",
-                crit_dmg_up,
-                crit_dmg_eligible,
             ),
             c(
                 "regen",
@@ -620,6 +556,55 @@ pub fn pool() -> &'static [Card] {
                 prism_apply,
                 prism_eligible,
             ),
+            // 武器进化（金卡 Legendary）
+            c(
+                "evo_missile",
+                Rarity::Legendary,
+                "Heatseeker",
+                "Missile evolved: +50% dmg, +1 per volley, larger blast",
+                evo_missile_apply,
+                evo_missile_eligible,
+            ),
+            c(
+                "evo_drone",
+                Rarity::Legendary,
+                "Swarm",
+                "Drone evolved: +1 drone, faster fire",
+                evo_drone_apply,
+                evo_drone_eligible,
+            ),
+            c(
+                "evo_laser",
+                Rarity::Legendary,
+                "Annihilator",
+                "Laser evolved: +60% DPS, +50% width, longer ON duty",
+                evo_laser_apply,
+                evo_laser_eligible,
+            ),
+            c(
+                "evo_chain",
+                Rarity::Legendary,
+                "Tempest",
+                "Chain evolved: +2 jumps, +40% damage",
+                evo_chain_apply,
+                evo_chain_eligible,
+            ),
+            c(
+                "evo_wave",
+                Rarity::Legendary,
+                "Cascade",
+                "Wave evolved: +1 wave, +30% amplitude & dmg",
+                evo_wave_apply,
+                evo_wave_eligible,
+            ),
+            c(
+                "evo_reflector",
+                Rarity::Legendary,
+                "Kaleidoscope",
+                "Reflector evolved: +1 shot, +2 bounces, +30% dmg",
+                evo_reflector_apply,
+                evo_reflector_eligible,
+            ),
         ]
     })
 }
@@ -655,9 +640,9 @@ pub fn draw_n(n: usize, player: &mut Player, weapons: &WeaponSlot) -> Vec<Card> 
         return vec![];
     }
 
-    // 保底：连续 5 次未见副武器解锁卡，且还有空槽 → 强制出一张
+    // 保底：连续 4 次未见副武器解锁卡，且还有空槽 → 强制出一张
     let unlock_count = pool.iter().filter(|c| c.id.starts_with("u_")).count();
-    let pity_trigger = player.perks.pity_unlock >= 5 && weapons.subs.len() < 4 && unlock_count > 0;
+    let pity_trigger = player.perks.pity_unlock >= 4 && weapons.subs.len() < 4 && unlock_count > 0;
 
     // 加权随机（带去重）
     let mut picks: Vec<Card> = Vec::with_capacity(n);
@@ -715,18 +700,11 @@ mod tests {
 
     #[test]
     fn capped_stat_cards_become_ineligible() {
+        // 数值卡已迁到 BuffKind 掉落（src/spawn.rs::maybe_drop_buff）；
+        // 这里保留对剩余构筑性卡的 cap 校验。
         let mut player = test_player();
         let weapons = WeaponSlot::new();
 
-        player.stats.fire_rate = 0.18;
-        player.stats.damage_mul = 2.35;
-        player.stats.bullet_speed = 1200.0;
-        player.stats.speed = 2200.0;
-        player.stats.attract_radius = 230.0;
-        player.stats.crit_chance = 0.35;
-        player.stats.crit_mul = 2.8;
-        player.stats.score_mul = 2.2;
-        player.stats.xp_mul = 2.0;
         player.stats.regen_per_min = 1.2;
         player.stats.invincible = 1.9;
         player.perks.hull_plating_picks = 2;
@@ -737,20 +715,7 @@ mod tests {
             .map(|c| c.id)
             .collect();
 
-        for capped in [
-            "fire_rate",
-            "damage",
-            "bullet_speed",
-            "move_speed",
-            "pickup_r",
-            "crit_chance",
-            "crit_dmg",
-            "score_mul",
-            "xp_mul",
-            "regen",
-            "invincible",
-            "max_hp",
-        ] {
+        for capped in ["regen", "invincible", "max_hp"] {
             assert!(!ids.contains(&capped), "{capped} should be filtered out");
         }
     }
@@ -758,7 +723,7 @@ mod tests {
     #[test]
     fn pity_forces_unlock_when_slots_are_available() {
         let mut player = test_player();
-        player.perks.pity_unlock = 5;
+        player.perks.pity_unlock = 4;
         let weapons = WeaponSlot::new();
 
         let cards = draw_n(3, &mut player, &weapons);

@@ -5,5 +5,5 @@ pub mod player;
 
 pub use bullet::{Bullet, HitSource};
 pub use enemy::{BossMod, EliteMod, Enemy, EnemyKind};
-pub use pickup::{Pickup, PickupKind};
+pub use pickup::{BuffKind, Pickup, PickupKind};
 pub use player::Player;

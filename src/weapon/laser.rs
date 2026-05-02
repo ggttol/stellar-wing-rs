@@ -26,18 +26,21 @@ impl Laser {
     fn cycle(&self) -> f32 {
         2.0 // 每 2 秒一个 ON+OFF 循环
     }
-    fn on_duty(&self) -> f32 {
-        0.45 + (self.level as f32 - 1.0) * 0.06
+    fn on_duty(&self, evo: bool) -> f32 {
+        let base = 0.45 + (self.level as f32 - 1.0) * 0.06;
+        if evo { (base + 0.15).min(0.95) } else { base }
     }
     fn dps(&self, player: &Player) -> f32 {
         let base = 1.6 + self.level as f32 * 0.55;
-        base * player.stats.damage_mul
+        let mul = if player.perks.evo_laser { 1.6 } else { 1.0 };
+        base * player.stats.damage_mul * mul
     }
-    fn width(&self) -> f32 {
-        14.0 + self.level as f32 * 3.0
+    fn width(&self, evo: bool) -> f32 {
+        let w = 14.0 + self.level as f32 * 3.0;
+        if evo { w * 1.5 } else { w }
     }
-    fn is_on(&self) -> bool {
-        self.phase < self.on_duty()
+    fn is_on_with(&self, evo: bool) -> bool {
+        self.phase < self.on_duty(evo)
     }
 }
 
@@ -62,6 +65,7 @@ impl SubWeapon for Laser {
         enemies: &mut [Enemy],
         _bullets: &mut Vec<Bullet>,
         fx: &mut Fx,
+        damage_acc: &mut [f32; 9],
     ) {
         if self.beam_x < 0.0 {
             self.beam_x = player.x;
@@ -71,10 +75,11 @@ impl SubWeapon for Laser {
         self.beam_x += (target_x - self.beam_x) * track;
 
         self.phase = (self.phase + dt / self.cycle()) % 1.0;
-        if !self.is_on() {
+        let evo = player.perks.evo_laser;
+        if !self.is_on_with(evo) {
             return;
         }
-        let half_w = self.width() * 0.5;
+        let half_w = self.width(evo) * 0.5;
         let dps = self.dps(player);
         for e in enemies.iter_mut() {
             if e.dead || e.y > player.y {
@@ -87,6 +92,7 @@ impl SubWeapon for Laser {
                 }
                 let dmg = dps * mul * e.damage_mul() * dt;
                 e.hp -= dmg;
+                damage_acc[crate::entity::HitSource::Laser as usize] += dmg;
                 if dmg > 0.0 {
                     e.hit_flash = 0.06;
                 }
@@ -100,49 +106,98 @@ impl SubWeapon for Laser {
     }
 
     fn draw(&self, player: &Player, t: f32, ox: f32, oy: f32) {
-        if !self.is_on() {
-            // OFF 期间画一个微弱的瞄准虚线
-            let mut c = Color::from_rgba(125, 249, 255, 255);
-            c.a = 0.15;
-            let x = if self.beam_x >= 0.0 {
-                self.beam_x
-            } else {
-                player.x
-            };
-            draw_line(x + ox, player.y - player.h * 0.5 + oy, x + ox, oy, 1.0, c);
-            return;
-        }
-        let half_w = self.width() * 0.5;
-        let x = if self.beam_x >= 0.0 {
+        let evo = player.perks.evo_laser;
+        let x_center = if self.beam_x >= 0.0 {
             self.beam_x
         } else {
             player.x
         };
-        let pulse = 0.85 + (t * 18.0).sin() * 0.15;
-        // 外辉
-        let mut outer = Color::from_rgba(125, 249, 255, 255);
-        outer.a = 0.25 * pulse;
-        draw_rectangle(
-            x + ox - half_w * 1.6,
-            oy,
-            half_w * 3.2,
-            player.y + oy - player.h * 0.5,
-            outer,
-        );
-        // 主束
-        let mut core = Color::from_rgba(220, 250, 255, 255);
-        core.a = 0.85 * pulse;
-        draw_rectangle(
-            x + ox - half_w,
-            oy,
-            half_w * 2.0,
-            player.y + oy - player.h * 0.5,
-            core,
-        );
-        // 中心高亮
-        let mut hot = WHITE;
-        hot.a = pulse;
-        draw_rectangle(x + ox - 1.5, oy, 3.0, player.y + oy - player.h * 0.5, hot);
+        let muzzle_y = player.y - player.h * 0.5;
+        let top_y = 0.0;
+        let beam_h = (muzzle_y - top_y).max(1.0);
+        let x = x_center + ox;
+
+        // —— OFF 充能态：渐次密集的下行能量点，临开火前最亮 ——
+        if !self.is_on_with(evo) {
+            let on_d = self.on_duty(evo);
+            let off_phase =
+                ((self.phase - on_d) / (1.0 - on_d)).clamp(0.0, 1.0);
+            // charge: 0 = 刚 OFF, 1 = 即将开火
+            let charge = off_phase;
+
+            let mut guide = Color::from_rgba(125, 249, 255, 255);
+            guide.a = 0.10 + 0.30 * charge;
+            draw_line(x, top_y + oy, x, muzzle_y + oy, 1.0, guide);
+
+            let n = 2 + (charge * 6.0) as usize;
+            for i in 0..n {
+                let prog = ((t * (1.4 + charge * 2.5) + i as f32 / n as f32) % 1.0).clamp(0.0, 1.0);
+                let py = top_y + prog * beam_h;
+                let mut pc = Color::from_rgba(200, 240, 255, 255);
+                pc.a = 0.55 * charge;
+                let r = 1.5 + charge * 2.0;
+                draw_circle(x, py + oy, r * 1.8, pc);
+                pc.a = 0.85 * charge;
+                draw_circle(x, py + oy, r, pc);
+            }
+            return;
+        }
+
+        // —— ON 态：多层光柱 + 顶端冲击 + 流动能量 + muzzle ——
+        let half_w = self.width(evo) * 0.5;
+        let pulse = 0.88 + (t * 24.0).sin() * 0.12;
+        // 整束随时间轻微"呼吸"——比纯 alpha 闪更接近真实激光
+        let breath = 1.0 + (t * 6.0).sin() * 0.06;
+
+        // 顶端冲击：光束打到屏幕外的发散圆斑（双层）
+        let mut splash = Color::from_rgba(220, 250, 255, 255);
+        splash.a = 0.30 * pulse;
+        draw_circle(x, top_y + oy + 4.0, half_w * 3.0, splash);
+        splash.a = 0.55 * pulse;
+        draw_circle(x, top_y + oy + 4.0, half_w * 1.6, splash);
+        splash.a = pulse;
+        draw_circle(x, top_y + oy + 2.0, half_w * 0.6, splash);
+
+        // 多层光柱：从外软到内硬，五层叠出 soft falloff
+        // 元组：(宽度倍率, 颜色, alpha 倍率)
+        let cyan = Color::from_rgba(125, 249, 255, 255);
+        let bright = Color::from_rgba(210, 248, 255, 255);
+        let bands: [(f32, Color, f32); 5] = [
+            (3.4 * breath, cyan, 0.10),
+            (2.3 * breath, cyan, 0.22),
+            (1.55, cyan, 0.45),
+            (1.0, bright, 0.85),
+            (0.32, WHITE, 1.0),
+        ];
+        for (wmul, mut c, amul) in bands {
+            c.a = amul * pulse;
+            draw_rectangle(x - half_w * wmul, top_y + oy, half_w * wmul * 2.0, beam_h, c);
+        }
+
+        // 流动能量：从 muzzle 向 top 滚动的亮节，越接近顶端越大
+        let pulses = 4 + self.level as usize;
+        for i in 0..pulses {
+            let prog = ((t * 1.6 + i as f32 / pulses as f32) % 1.0).clamp(0.0, 1.0);
+            let py = muzzle_y - prog * beam_h;
+            let envelope = (prog * std::f32::consts::PI).sin();
+            let size = 2.5 + envelope * (3.0 + self.level as f32 * 0.4);
+            let mut pc = WHITE;
+            pc.a = 0.55 * pulse * envelope;
+            draw_circle(x, py + oy, size * 1.8, pc);
+            pc.a = 0.95 * pulse * envelope;
+            draw_circle(x, py + oy, size, pc);
+        }
+
+        // muzzle 发射口：脉冲圆 + 纯白核
+        let muzzle_pulse = 1.0 + (t * 30.0).sin() * 0.20;
+        let mut m = Color::from_rgba(220, 250, 255, 255);
+        m.a = 0.45 * pulse;
+        draw_circle(x, muzzle_y + oy, half_w * 2.4 * muzzle_pulse, m);
+        m.a = 0.85 * pulse;
+        draw_circle(x, muzzle_y + oy, half_w * 1.3 * muzzle_pulse, m);
+        m = WHITE;
+        m.a = pulse;
+        draw_circle(x, muzzle_y + oy, half_w * 0.55, m);
     }
 }
 

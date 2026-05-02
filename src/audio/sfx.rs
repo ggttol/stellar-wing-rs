@@ -3,60 +3,108 @@
 #![allow(clippy::needless_range_loop)] // DSP 循环里 `i` 同时是样本索引和时间，按索引读最清楚。
 
 use super::synth::{
-    add_note, add_swept, encode_wav, midi_hz, sine, square, triangle, Adsr, NoiseRng, OnePoleLp,
-    SR_F,
+    add_note, add_swept, encode_wav, midi_hz, saw, sine, square, triangle, Adsr, NoiseRng,
+    OnePoleLp, SR_F,
 };
 
-// —— 主武器射击：短促"啾"声，下行扫频 + 微噪 ————————————————————
+// —— 主武器射击：低频 sci-fi blaster "pew" ————————————————————————
+//
+// 旧版本 1800→600 Hz 方波太接近小鸟啾。换成：锯齿波主体 800→160 Hz 急降 +
+// 正弦低八度做"体感" + 起始 6ms 噪声 click 当膛口冲击。整体下沉了一个八度，
+// 体感更像激光枪，连发也不会糊成一片"啾啾啾"。
 
 pub fn shoot() -> Vec<u8> {
-    let dur = 0.10;
+    let dur = 0.085_f32;
     let n = (dur * SR_F) as usize;
     let mut buf = vec![0.0_f32; n];
 
-    // 下行方波扫频 1800 -> 600 Hz
+    // 主扫频：锯齿波 800 → 160 Hz；前 25ms 急降给"snap"，之后缓收
     add_swept(
         &mut buf,
         0.0,
         dur,
         |t| {
-            1800.0
-                * (1.0 - t / dur)
-                    .max(0.0)
-                    .powf(0.6)
-                    .max(0.0)
-                    .mul_add(0.66, 0.34)
+            if t < 0.025 {
+                let k = (t / 0.025).powf(0.55);
+                800.0 - 640.0 * k
+            } else {
+                let k = ((t - 0.025) / (dur - 0.025)).clamp(0.0, 1.0);
+                160.0 - 40.0 * k
+            }
         },
-        |p| square(p, 0.35),
-        Adsr::pluck(0.06),
+        saw,
+        Adsr {
+            attack: 0.0010,
+            decay: 0.025,
+            sustain: 0.45,
+            release: dur - 0.030,
+        },
+        0.40,
+    );
+
+    // 低八度 sub-bass：正弦 250 → 70 Hz，撑出胸腔感
+    add_swept(
+        &mut buf,
+        0.0,
+        dur,
+        |t| {
+            let k = (t / 0.035).clamp(0.0, 1.0).powf(0.6);
+            250.0 - 180.0 * k
+        },
+        sine,
+        Adsr {
+            attack: 0.0008,
+            decay: 0.030,
+            sustain: 0.55,
+            release: dur - 0.035,
+        },
         0.55,
     );
-    // 噪声底，做点空气感
-    let mut rng = NoiseRng::new(0xC0FFEE);
-    let mut lp = OnePoleLp::new(2400.0);
-    for i in 0..n {
+
+    // 膛口 click：0~6ms 强噪声脉冲，给发射的"咔"
+    let click_n = (0.006 * SR_F) as usize;
+    let mut rng_click = NoiseRng::new(0xBEEF);
+    let mut lp_click = OnePoleLp::new(2200.0);
+    for i in 0..click_n.min(n) {
         let t = i as f32 / SR_F;
-        let env = (1.0 - t / dur).clamp(0.0, 1.0).powf(2.0);
-        let s = lp.process(rng.next()) * env * 0.18;
-        buf[i] += s;
+        let env = (1.0 - t / 0.006).clamp(0.0, 1.0).powf(2.5);
+        buf[i] += lp_click.process(rng_click.next()) * env * 0.32;
     }
 
-    encode_wav(&buf, 0.85)
+    // 尾部空气感噪声（低通），让残响不那么干瘪
+    let mut rng_tail = NoiseRng::new(0xC0FFEE);
+    let mut lp_tail = OnePoleLp::new(900.0);
+    for i in 0..n {
+        let t = i as f32 / SR_F;
+        let env = (1.0 - t / dur).clamp(0.0, 1.0).powf(2.6);
+        buf[i] += lp_tail.process(rng_tail.next()) * env * 0.08;
+    }
+
+    encode_wav(&buf, 0.92)
 }
 
-// —— 击中敌人：金属"叮"——————————————————————————————————————————
+// —— 击中敌人：金属"叮" ——————————————————————————————————————————
+//
+// 高频 SFX 容易因重复疲劳。提供 3 个轻微差异的变体，用 `hit_variant(k)`
+// 选择，由 Audio 运行时随机抽样，避免一直是同一个声响。
 
-pub fn hit() -> Vec<u8> {
-    let dur = 0.06;
+pub fn hit_variant(k: u32) -> Vec<u8> {
+    // (起始频率, 衰减斜率, 时长, 增益)；让每个变体音色略有差别。
+    let cfgs = [
+        (3200.0_f32, 8000.0_f32, 0.06_f32, 0.55_f32),
+        (3600.0, 8800.0, 0.055, 0.50),
+        (2800.0, 7200.0, 0.065, 0.58),
+    ];
+    let (f0, slope, dur, gain) = cfgs[(k as usize) % cfgs.len()];
     let mut buf = vec![0.0_f32; (dur * SR_F) as usize];
     add_swept(
         &mut buf,
         0.0,
         dur,
-        |t| 3200.0 - t * 8000.0,
+        |t| f0 - t * slope,
         triangle,
         Adsr::percussive(0.04),
-        0.55,
+        gain,
     );
     encode_wav(&buf, 0.9)
 }

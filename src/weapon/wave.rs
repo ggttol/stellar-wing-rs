@@ -62,14 +62,17 @@ impl SubWeapon for WaveCannon {
         _enemies: &mut [Enemy],
         bullets: &mut Vec<Bullet>,
         _fx: &mut Fx,
+        _damage_acc: &mut [f32; 9],
     ) {
         if t - self.last_shot < self.interval() {
             return;
         }
         self.last_shot = t;
-        let n = self.count();
+        let evo = player.perks.evo_wave;
+        let n = self.count() + if evo { 1 } else { 0 };
         let speed = player.stats.bullet_speed;
-        let amp = self.amplitude();
+        let amp = self.amplitude() * if evo { 1.30 } else { 1.0 };
+        let dmg_evo_mul = if evo { 1.30 } else { 1.0 };
 
         for i in 0..n {
             let off = (i as f32 - (n as f32 - 1.0) * 0.5) * 18.0;
@@ -77,7 +80,7 @@ impl SubWeapon for WaveCannon {
             let y = player.y - player.h * 0.5;
 
             let mut b = Bullet::player_shot(x, y, 0.0, -speed);
-            let (dmg, crit) = roll_crit(player, 0.95 + self.level as f32 * 0.12);
+            let (dmg, crit) = roll_crit(player, (1.05 + self.level as f32 * 0.13) * dmg_evo_mul);
             b.damage = dmg;
             b.is_crit = crit;
             b.w = 5.0;
