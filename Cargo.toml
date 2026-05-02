@@ -1,6 +1,6 @@
 [package]
 name = "stellar-wing"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Stellar Wing — a Rust roguelike vertical shoot-em-up"
 license = "MIT"

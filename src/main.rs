@@ -1,3 +1,5 @@
+// Windows release 构建隐藏控制台窗口（debug 仍保留以便看 stdout / panic）
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use macroquad::prelude::*;
 
 mod achievements;
