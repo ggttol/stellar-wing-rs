@@ -17,6 +17,11 @@ ICON_ICNS="$RESOURCES_DIR/AppIcon.icns"
 mkdir -p "$DIST_DIR"
 
 cd "$ROOT_DIR"
+
+# 从 Cargo.toml 抽出版本号塞进 Info.plist；保持 .app 的 CFBundleVersion
+# 始终与发布二进制一致。
+APP_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)
+
 cargo build --release
 
 rm -rf "$APP_DIR"
@@ -40,7 +45,7 @@ if [[ -f "$ICON_SRC" ]]; then
     iconutil -c icns "$ICONSET_DIR" -o "$ICON_ICNS"
 fi
 
-cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
+cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -62,9 +67,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.2</string>
+    <string>${APP_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>0.1.2</string>
+    <string>${APP_VERSION}</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.games</string>
     <key>LSMinimumSystemVersion</key>
